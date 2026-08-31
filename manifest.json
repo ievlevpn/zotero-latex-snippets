@@ -12,7 +12,8 @@
 		"zotero": {
 			"id": "latex-snippets@local",
 			"update_url": "https://raw.githubusercontent.com/ievlevpn/zotero-latex-snippets/master/update.json",
-			"strict_min_version": "6.999"
+			"strict_min_version": "6.999",
+			"strict_max_version": "*"
 		}
 	}
 }
