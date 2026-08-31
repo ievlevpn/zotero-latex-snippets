@@ -16,15 +16,12 @@
  * — clicking it has to put the source back and drop the caret in, or an
  * equation would become uneditable the moment it rendered.
  */
-import { renderMath, unrenderMath } from "src/render/math";
+import { clearRenderState, syncRender, unrenderMath } from "src/render/math";
 import { segmentsOf, selectionOffsets, setCaret, SOURCE_ATTR } from "src/render/segments";
-import { renderableEquations } from "src/utils/math_bounds";
 import { COMMENT_FIELD } from "src/editor/contenteditable";
 
 /** Long enough for a burst of React updates to settle, short enough not to be felt. */
 const SETTLE_MS = 100;
-
-const STATE_ATTR = "data-latex-snippets-render";
 
 export function installAnnotationRendering(win: any): () => void {
 	const doc: Document = win.document;
@@ -41,29 +38,30 @@ export function installAnnotationRendering(win: any): () => void {
 	function renderField(field: HTMLElement) {
 		const selection = isFocused(field) ? selectionOffsets(field) : null;
 		const caret = selection ? selection.to : null;
-
-		// Rendering mutates the DOM, which wakes the observer, which would render
-		// again: skip when the DOM already says what it should.
-		const { text } = segmentsOf(field);
-		const wanted = renderableEquations(text)
-			.filter((bounds) => caret == null || caret < bounds.outer_start || caret > bounds.outer_end)
-			.map((bounds) => `${bounds.outer_start}:${bounds.outer_end}`)
-			.join(",");
-		if (field.getAttribute(STATE_ATTR) === wanted) return;
-
-		const changed = renderMath(field, katex, caret);
-		field.setAttribute(STATE_ATTR, wanted);
 		// Only when the DOM actually moved: the caret is fine otherwise, and
 		// resetting it on every keystroke is exactly what makes typing feel laggy.
-		if (changed && selection) setCaret(field, selection.from, selection.to);
+		if (syncRender(field, katex, caret) && selection) setCaret(field, selection.from, selection.to);
 	}
 
+	/* A document with a few hundred annotations has a few hundred comment fields,
+	 * and the observer fires for anything the reader does. Only the fields a
+	 * mutation actually touched are looked at, unless something asks for a sweep. */
+	const dirty = new Set<HTMLElement>();
+	let sweep = false;
 	let timer = 0;
-	const schedule = (delay: number) => {
+
+	const schedule = (delay: number, all = false) => {
+		if (all) sweep = true;
+		if (!sweep && dirty.size === 0) return;
 		win.clearTimeout(timer);
 		timer = win.setTimeout(() => {
 			timer = 0;
-			for (const field of fields()) renderField(field);
+			const targets = sweep ? fields() : Array.from(dirty);
+			sweep = false;
+			dirty.clear();
+			for (const field of targets) {
+				if (field.isConnected) renderField(field);
+			}
 		}, delay);
 	};
 
@@ -74,7 +72,7 @@ export function installAnnotationRendering(win: any): () => void {
 		if (!field) return;
 		const selection = selectionOffsets(field);
 		if (unrenderMath(field) && selection) setCaret(field, selection.from, selection.to);
-		field.removeAttribute(STATE_ATTR);
+		clearRenderState(field);
 	};
 
 	/* Bubble phase of the same event: React has read the comment by now, so the
@@ -88,7 +86,7 @@ export function installAnnotationRendering(win: any): () => void {
 		renderField(field);
 	};
 
-	const onCompositionEnd = () => schedule(0);
+	const onCompositionEnd = () => schedule(0, true);
 
 	/* Click a rendered equation to edit it. Without this an equation becomes
 	 * read-only as soon as it renders: it is an atom, so the caret cannot enter
@@ -107,17 +105,21 @@ export function installAnnotationRendering(win: any): () => void {
 		event.preventDefault();
 		field.focus();
 		unrenderMath(field);
-		field.removeAttribute(STATE_ATTR);
+		clearRenderState(field);
 		// Just inside the closing delimiter, which is where you want to be when
 		// you click an equation to change it.
 		setCaret(field, (segment?.start ?? 0) + source.length - delimiter);
+		dirty.add(field);
 		schedule(SETTLE_MS);
 	};
 
-	const onFocusChange = () => schedule(0);
+	const onFocusChange = () => schedule(0, true);
 	// The caret leaving an equation is what lets it render again.
 	const onSelectionChange = () => {
-		if (fieldOf(doc.activeElement)) schedule(SETTLE_MS);
+		const field = fieldOf(doc.activeElement);
+		if (!field) return;
+		dirty.add(field);
+		schedule(SETTLE_MS);
 	};
 
 	doc.addEventListener("input", onInputCapture, true);
@@ -130,13 +132,29 @@ export function installAnnotationRendering(win: any): () => void {
 
 	// React rewrites these fields whenever an annotation changes, wiping what we
 	// rendered; watching the document is simpler than tracking its lifecycles.
-	const observer = new win.MutationObserver(() => schedule(SETTLE_MS));
+	const observer = new win.MutationObserver((records: MutationRecord[]) => {
+		for (const record of records) {
+			const field = fieldOf(record.target) ?? fieldOf(record.target.parentNode);
+			if (field) dirty.add(field);
+			for (const node of Array.from(record.addedNodes)) {
+				if (node.nodeType !== 1) continue;
+				const element = node as Element;
+				const own = fieldOf(element);
+				if (own) dirty.add(own);
+				for (const nested of Array.from(element.querySelectorAll(COMMENT_FIELD))) {
+					dirty.add(nested as HTMLElement);
+				}
+			}
+		}
+		schedule(SETTLE_MS);
+	});
 	observer.observe(doc.body, { childList: true, subtree: true, characterData: true });
-	schedule(0);
+	schedule(0, true);
 
 	return () => {
 		observer.disconnect();
 		win.clearTimeout(timer);
+		dirty.clear();
 		doc.removeEventListener("input", onInputCapture, true);
 		doc.removeEventListener("input", onInputBubble, false);
 		doc.removeEventListener("compositionend", onCompositionEnd, true);
@@ -146,7 +164,7 @@ export function installAnnotationRendering(win: any): () => void {
 		doc.removeEventListener("selectionchange", onSelectionChange);
 		for (const field of fields()) {
 			unrenderMath(field);
-			field.removeAttribute(STATE_ATTR);
+			clearRenderState(field);
 		}
 	};
 }

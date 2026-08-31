@@ -42,6 +42,9 @@ const DELIMITERS_MAP: Record<string, string> = {
 	"<": ">",
 };
 
+/** The closing halves of DELIMITERS_MAP — fixed, so built once rather than per Tab. */
+const CLOSING_DELIMITERS = new Set(Object.values(DELIMITERS_MAP));
+
 const isClosingDelimiterToken = (tokens: Token[], index: number, closingSymbols: Set<string>): boolean => {
 	const current = tokens[index];
 	if (index > 0) {
@@ -90,7 +93,7 @@ export function tabout(win: any, settings: Settings): boolean {
 /** The end of the first unmatched closing delimiter after the cursor, or null. */
 export function taboutByEnclosedBrackets(latexString: string, closingSymbols: Set<string>): number | null {
 	const tokens = tokenize(latexString);
-	const closing = intersection(new Set(Object.values(DELIMITERS_MAP)), closingSymbols);
+	const closing = intersection(CLOSING_DELIMITERS, closingSymbols);
 	const opening = new Set(Object.keys(DELIMITERS_MAP).filter((key) => closing.has(DELIMITERS_MAP[key])));
 
 	const stack: string[] = [];

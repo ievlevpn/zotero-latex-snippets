@@ -11,7 +11,7 @@
  */
 import { Buffer, BufferKind, Range } from "./buffer";
 import { MathBounds, mathBoundsAt } from "src/utils/math_bounds";
-import { domPointAt, Segment, segmentsOf, selectionOffsets, setCaret } from "src/render/segments";
+import { domPointAt, segmentsOf, selectionOffsets, setCaret } from "src/render/segments";
 
 /**
  * The comment field, in both the sidebar and the in-page popup — those are two
@@ -28,12 +28,10 @@ export class TextBuffer implements Buffer {
 	readonly from: number;
 	readonly to: number;
 	readonly mathBounds: MathBounds | null;
-	private segments: Segment[];
 
-	private constructor(element: HTMLElement, text: string, segments: Segment[], from: number, to: number) {
+	private constructor(element: HTMLElement, text: string, from: number, to: number) {
 		this.element = element;
 		this.text = text;
-		this.segments = segments;
 		this.from = from;
 		this.to = to;
 		this.mathBounds = mathBoundsAt(text, to);
@@ -64,8 +62,7 @@ export class TextBuffer implements Buffer {
 	static forElement(element: HTMLElement): TextBuffer | null {
 		const selection = selectionOffsets(element);
 		if (!selection) return null;
-		const { segments, text } = segmentsOf(element);
-		return new TextBuffer(element, text, segments, selection.from, selection.to);
+		return new TextBuffer(element, segmentsOf(element).text, selection.from, selection.to);
 	}
 
 	private select(from: number, to: number) {

@@ -17,11 +17,16 @@ import { autoEnlargeBrackets } from "./auto_enlarge_brackets";
 
 export type SnippetInfo = { snippets: Snippet[]; key?: string };
 
-export function runSnippets(win: any, snippetInfo: SnippetInfo, settings: Settings): boolean {
+/**
+ * `known` is the buffer the caller already has, reused for the first pass —
+ * building one means walking the editor, and doing it twice per keystroke is
+ * exactly the sort of thing that adds up.
+ */
+export function runSnippets(win: any, snippetInfo: SnippetInfo, settings: Settings, known?: Buffer): boolean {
 	let didExpand = false;
 
 	for (let i = 0; i <= settings.snippetRecursion; i++) {
-		const buffer = currentBuffer(win);
+		const buffer = i === 0 && known ? known : currentBuffer(win);
 		if (!buffer) break;
 
 		const ctx = Context.fromBuffer(buffer);

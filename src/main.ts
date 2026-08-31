@@ -75,6 +75,7 @@ function loadSettings(json: string | undefined) {
 	}
 
 	automaticSnippets = settings ? settings.snippets.filter((s) => s.options.automatic) : [];
+	manualByKey = new Map();
 	clearTabstops();
 	syncAnnotationRendering();
 }
@@ -90,12 +91,20 @@ function syncAnnotationRendering() {
 	else { stopRendering?.(); stopRendering = null; }
 }
 
+/* Filtering every snippet on every keystroke, to nearly always get an empty
+ * list, is a waste of a keypress. Cleared whenever the snippets change. */
+let manualByKey = new Map<string, Snippet[]>();
+
 /** Snippets bound to this key: an explicit `triggerKey`, or the default trigger. */
 function manualSnippetsFor(key: string): Snippet[] {
 	if (!settings) return [];
-	return settings.snippets.filter(
+	const cached = manualByKey.get(key);
+	if (cached) return cached;
+	const matching = settings.snippets.filter(
 		(s) => s.triggerKey === key || (!s.triggerKey && !s.options.automatic && key === settings!.snippetsTrigger),
 	);
+	manualByKey.set(key, matching);
+	return matching;
 }
 
 function handleKeydown(event: KeyboardEvent): boolean {
@@ -125,13 +134,13 @@ function handleKeydown(event: KeyboardEvent): boolean {
 
 	// 1. Automatic snippets, on any plain printable key.
 	if (settings.snippetsEnabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
-		if (runSnippets(window, { snippets: automaticSnippets, key: event.key }, settings)) return true;
+		if (runSnippets(window, { snippets: automaticSnippets, key: event.key }, settings, buffer)) return true;
 	}
 
 	// 2. Manual snippets (Tab by default, or the snippet's own triggerKey).
 	if (settings.snippetsEnabled) {
 		const manual = manualSnippetsFor(key);
-		if (manual.length && runSnippets(window, { snippets: manual }, settings)) return true;
+		if (manual.length && runSnippets(window, { snippets: manual }, settings, buffer)) return true;
 	}
 
 	// 3./4. Tabstops.

@@ -28,14 +28,30 @@
 
 		let overrides = read();
 
-		const write = () => Zotero.Prefs.set(PREF, JSON.stringify(overrides), true);
+		/* Every write wakes the pref observer, which re-parses the whole snippet
+		 * file in every open note and reader. Typing in the snippets box would do
+		 * that on each keystroke, so writes are held until you pause — and flushed
+		 * on the way out so nothing is lost. */
+		let pending = null;
 
-		const setValue = (key, value, fallback) => {
+		const write = () => {
+			if (pending) { clearTimeout(pending); pending = null; }
+			Zotero.Prefs.set(PREF, JSON.stringify(overrides), true);
+		};
+		const writeSoon = () => {
+			if (pending) clearTimeout(pending);
+			pending = setTimeout(write, 400);
+		};
+
+		const setValue = (key, value, fallback, immediate) => {
 			// Storing only what differs keeps future default changes flowing through.
 			if (value === fallback) delete overrides[key];
 			else overrides[key] = value;
-			write();
+			if (immediate) write();
+			else writeSoon();
 		};
+
+		window.addEventListener("unload", write, { once: true });
 
 		/* --- the two code areas --- */
 
@@ -64,9 +80,10 @@
 				if (timer) clearTimeout(timer);
 				timer = setTimeout(check, 300);
 			});
+			area.addEventListener("blur", write);
 			reset.addEventListener("click", () => {
 				area.value = defaultSource;
-				setValue(key, defaultSource, defaultSource);
+				setValue(key, defaultSource, defaultSource, true);
 				check();
 			});
 			check();
@@ -118,8 +135,8 @@
 				input = h("input");
 				input.type = "checkbox";
 				input.checked = !!stored;
-				input.addEventListener("command", () => setValue(field.key, input.checked, field.default));
-				input.addEventListener("change", () => setValue(field.key, input.checked, field.default));
+				input.addEventListener("command", () => setValue(field.key, input.checked, field.default, true));
+				input.addEventListener("change", () => setValue(field.key, input.checked, field.default, true));
 			} else if (field.type === "number") {
 				input = h("input");
 				input.type = "number";
@@ -136,7 +153,7 @@
 					input.append(el);
 				}
 				input.value = stored;
-				input.addEventListener("change", () => setValue(field.key, input.value, field.default));
+				input.addEventListener("change", () => setValue(field.key, input.value, field.default, true));
 			} else if (field.type === "code") {
 				input = h("textarea");
 				input.className = "ls-code";
@@ -144,11 +161,13 @@
 				input.spellcheck = false;
 				input.value = stored;
 				input.addEventListener("input", () => setValue(field.key, input.value, field.default));
+				input.addEventListener("blur", write);
 			} else {
 				input = h("input");
 				input.type = "text";
 				input.value = stored;
 				input.addEventListener("input", () => setValue(field.key, input.value, field.default));
+				input.addEventListener("blur", write);
 			}
 
 			const label = h("label");

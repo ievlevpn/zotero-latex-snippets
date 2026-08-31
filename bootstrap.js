@@ -105,21 +105,45 @@ let onReaderEvent = null;
 
 /* --- settings ------------------------------------------------------------ */
 
+/* The pref holds the whole snippet source, tens of kilobytes of it, so parsing
+ * it is not something to do casually. Cached until the pref changes. */
+let overridesCache = null;
+let overridesJSON = null;
+
 function readOverrides() {
+	if (overridesCache) return overridesCache;
+	overridesJSON = Zotero.Prefs.get(PREF, true) || "{}";
 	try {
-		const raw = Zotero.Prefs.get(PREF, true);
-		const parsed = raw ? JSON.parse(raw) : null;
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+		const parsed = JSON.parse(overridesJSON);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			overridesCache = parsed;
+		} else {
+			overridesCache = {};
+			overridesJSON = "{}"; // the string is handed straight to the engine
+		}
 	} catch (e) {
 		Zotero.debug("LaTeX Snippets: unreadable settings pref - " + e);
-		return {};
+		overridesCache = {};
+		overridesJSON = "{}";
 	}
+	return overridesCache;
+}
+
+function forgetOverrides() {
+	overridesCache = null;
+	overridesJSON = null;
 }
 
 // Only the overrides travel; the content script merges them over its own
-// defaults, so an unset field always follows the shipped default.
+// defaults, so an unset field always follows the shipped default. The stored
+// pref is already this exact JSON, so hand it over rather than re-serialising.
 function settingsJSON() {
-	return JSON.stringify(readOverrides());
+	readOverrides();
+	return overridesJSON;
+}
+
+function mathEnabled() {
+	return readOverrides().annotationMathEnabled !== false;
 }
 
 /* --- injection ----------------------------------------------------------- */
@@ -146,9 +170,18 @@ function inject(win, { withKatex } = {}) {
 		return;
 	}
 
-	// Only the reader needs a renderer; notes have Zotero's own KaTeX.
-	if (withKatex && !content.katex) runScript(doc, katexScript);
+	if (withKatex) ensureKatex(win);
 	runScript(doc, contentScript);
+}
+
+/* KaTeX is a quarter of a megabyte, and notes never need it — Zotero renders
+ * their equations itself. Load it only into readers, and only when annotation
+ * rendering is actually switched on. */
+function ensureKatex(win) {
+	const content = win.wrappedJSObject;
+	if (content.katex || !mathEnabled()) return false;
+	runScript(win.document, katexScript);
+	return true;
 }
 
 function attach(instance) {
@@ -189,12 +222,24 @@ function eachTarget(fn) {
 }
 
 function onSettingsChanged() {
+	forgetOverrides();
 	const json = settingsJSON();
+
+	// A reader that started with rendering off has no KaTeX yet; give it one
+	// before telling the engine to look again.
+	for (const reader of Zotero.Reader._readers || []) {
+		try {
+			if (reader?._iframeWindow) ensureKatex(reader._iframeWindow);
+		} catch (e) {
+			Zotero.debug("LaTeX Snippets: " + e);
+		}
+	}
+
 	eachTarget((win) => {
 		const content = win.wrappedJSObject;
 		if (content.__latexSnippetsReload) content.__latexSnippetsReload(json);
 	});
-	for (const win of itemPaneWindows.keys()) itemPaneWindows.get(win).refresh();
+	eachItemPane((handle) => handle.refresh());
 }
 
 /* --- the item pane's annotation rows ------------------------------------- */
@@ -202,7 +247,16 @@ function onSettingsChanged() {
 /* Those rows are chrome, not reader content, so the injected bundle cannot see
  * them. They are read-only, which makes this the easy half: render and leave it
  * alone — there is no editing to put the `$…$` back for. */
-const itemPaneWindows = new Map();
+/* Keyed weakly, and iterated through Zotero's own window list, so a window that
+ * closes without us hearing about it is not pinned in memory by this. */
+const itemPaneWindows = new WeakMap();
+
+function eachItemPane(fn) {
+	for (const window of Zotero.getMainWindows()) {
+		const handle = itemPaneWindows.get(window);
+		if (handle) fn(handle, window);
+	}
+}
 
 const ROW_SELECTOR = "annotation-row .comment";
 
@@ -211,23 +265,38 @@ function installItemPaneRendering(window) {
 	const root = doc.getElementById("zotero-item-pane") || doc.documentElement;
 	if (!root) return null;
 
-	Services.scriptloader.loadSubScript(rootURI + "vendor/katex.min.js", window);
-	Services.scriptloader.loadSubScript(rootURI + "build/render.js", window);
-	const render = window.LatexSnippetsRender;
-	const katex = window.katex;
-	if (!render || !katex) {
-		Zotero.debug("LaTeX Snippets: renderer failed to load in the item pane");
-		return null;
-	}
+	// Half a megabyte of scripts, loaded the first time an annotation with a
+	// comment actually shows up rather than on every window that opens.
+	let loaded = false;
+	const load = () => {
+		if (loaded) return true;
+		try {
+			Services.scriptloader.loadSubScript(rootURI + "vendor/katex.min.js", window);
+			Services.scriptloader.loadSubScript(rootURI + "build/render.js", window);
+			loaded = !!(window.LatexSnippetsRender && window.katex);
+		} catch (e) {
+			Zotero.debug("LaTeX Snippets: renderer failed to load in the item pane - " + e);
+			loaded = false;
+		}
+		return loaded;
+	};
 
 	let scheduled = 0;
-	const enabled = () => readOverrides().annotationMathEnabled !== false;
 
 	const tick = () => {
 		scheduled = 0;
-		for (const el of doc.querySelectorAll(ROW_SELECTOR)) {
-			if (enabled()) render.renderMath(el, katex);
-			else render.unrenderMath(el);
+		const rows = doc.querySelectorAll(ROW_SELECTOR);
+		if (!rows.length) return;
+		if (mathEnabled()) {
+			if (!load()) return;
+			// syncRender, not renderMath: it does nothing when the DOM already
+			// matches, which is what keeps this off the observer's treadmill.
+			for (const el of rows) window.LatexSnippetsRender.syncRender(el, window.katex);
+		} else if (loaded) {
+			for (const el of rows) {
+				window.LatexSnippetsRender.unrenderMath(el);
+				window.LatexSnippetsRender.clearRenderState(el);
+			}
 		}
 	};
 	const schedule = () => {
@@ -243,7 +312,11 @@ function installItemPaneRendering(window) {
 		destroy() {
 			observer.disconnect();
 			if (scheduled) window.cancelAnimationFrame(scheduled);
-			for (const el of doc.querySelectorAll(ROW_SELECTOR)) render.unrenderMath(el);
+			if (!loaded) return;
+			for (const el of doc.querySelectorAll(ROW_SELECTOR)) {
+				window.LatexSnippetsRender.unrenderMath(el);
+				window.LatexSnippetsRender.clearRenderState(el);
+			}
 		},
 	};
 }
@@ -335,14 +408,17 @@ function shutdown() {
 		if (content.__latexSnippetsUninstall) content.__latexSnippetsUninstall();
 	});
 
-	for (const handle of itemPaneWindows.values()) handle.destroy();
-	itemPaneWindows.clear();
+	eachItemPane((handle, window) => {
+		handle.destroy();
+		itemPaneWindows.delete(window);
+	});
 
 	if (prefObserver) Zotero.Prefs.unregisterObserver(prefObserver);
 	prefObserver = null;
 	if (prefPane) Zotero.PreferencePanes.unregister(prefPane);
 	prefPane = null;
 	delete Zotero.LatexSnippets;
+	forgetOverrides();
 	contentScript = null;
 	katexScript = null;
 }

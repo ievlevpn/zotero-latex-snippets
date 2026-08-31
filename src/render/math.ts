@@ -15,6 +15,9 @@ import { segmentsOf, SOURCE_ATTR } from "./segments";
 
 export const MATH_CLASS = "latex-snippets-math";
 
+/** What `syncRender` last left in this element, so it can tell when to do nothing. */
+const STATE_ATTR = "data-latex-snippets-render";
+
 type Katex = { render(tex: string, element: Element, options: object): void };
 
 /* Rendered equations, by source. Every keystroke takes the rendering out of the
@@ -22,7 +25,9 @@ type Katex = { render(tex: string, element: Element, options: object): void };
  * equations would otherwise go through KaTeX again on every key. Cloning a
  * finished MathML subtree costs a fraction of parsing the LaTeX again. */
 const cache = new Map<string, Element>();
-const CACHE_MAX = 300;
+// Only the equations in the comment being edited are cycled through this, so a
+// small cache holds everything that matters; a big one just pins DOM subtrees.
+const CACHE_MAX = 100;
 
 function remember(source: string, node: Element) {
 	if (cache.has(source)) cache.delete(source);
@@ -122,4 +127,30 @@ export function renderMath(root: Element, katex: Katex, caret?: number | null): 
 	}
 
 	return changed;
+}
+
+/**
+ * Render `root` only if what it holds differs from what it should hold.
+ *
+ * Every caller here is driven by a MutationObserver, and rendering mutates, so
+ * without this the observer would wake the renderer, which would wake the
+ * observer, for as long as the window stayed open.
+ */
+export function syncRender(root: Element, katex: Katex, caret?: number | null): boolean {
+	const { text } = segmentsOf(root);
+	const wanted = renderableEquations(text)
+		.filter((bounds) => caret == null || caret < bounds.outer_start || caret > bounds.outer_end)
+		.map((bounds) => `${bounds.outer_start}:${bounds.outer_end}`)
+		.join(",");
+
+	if (root.getAttribute(STATE_ATTR) === wanted) return false;
+
+	const changed = renderMath(root, katex, caret);
+	root.setAttribute(STATE_ATTR, wanted);
+	return changed;
+}
+
+/** Forget what was rendered, so the next `syncRender` rebuilds it. */
+export function clearRenderState(root: Element) {
+	root.removeAttribute(STATE_ATTR);
 }
