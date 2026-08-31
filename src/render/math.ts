@@ -17,6 +17,20 @@ export const MATH_CLASS = "latex-snippets-math";
 
 type Katex = { render(tex: string, element: Element, options: object): void };
 
+/* Rendered equations, by source. Every keystroke takes the rendering out of the
+ * comment and puts it back (see reader/annotations.ts), so the same handful of
+ * equations would otherwise go through KaTeX again on every key. Cloning a
+ * finished MathML subtree costs a fraction of parsing the LaTeX again. */
+const cache = new Map<string, Element>();
+const CACHE_MAX = 300;
+
+function remember(source: string, node: Element) {
+	if (cache.has(source)) cache.delete(source);
+	cache.set(source, node);
+	// Oldest first, so deleting from the front drops the least recently used.
+	while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+}
+
 export function isRendered(root: Element): boolean {
 	return !!root.querySelector(`[${SOURCE_ATTR}]`);
 }
@@ -26,7 +40,9 @@ export function unrenderMath(root: Element): boolean {
 	const rendered = root.querySelectorAll(`[${SOURCE_ATTR}]`);
 	if (!rendered.length) return false;
 	for (const element of Array.from(rendered)) {
-		element.replaceWith(root.ownerDocument.createTextNode(element.getAttribute(SOURCE_ATTR) ?? ""));
+		const source = element.getAttribute(SOURCE_ATTR) ?? "";
+		element.replaceWith(root.ownerDocument.createTextNode(source));
+		remember(source, element); // detached now, and about to be wanted again
 	}
 	root.normalize();
 	return true;
@@ -34,6 +50,13 @@ export function unrenderMath(root: Element): boolean {
 
 function build(doc: Document, text: string, bounds: MathBounds, katex: Katex): Element {
 	const source = text.slice(bounds.outer_start, bounds.outer_end);
+
+	const cached = cache.get(source);
+	if (cached) {
+		remember(source, cached);
+		return cached.cloneNode(true) as Element;
+	}
+
 	const span = doc.createElement("span");
 	span.className = MATH_CLASS;
 	span.setAttribute(SOURCE_ATTR, source);
@@ -49,6 +72,7 @@ function build(doc: Document, text: string, bounds: MathBounds, katex: Katex): E
 	} catch {
 		span.textContent = source;
 	}
+	remember(source, span.cloneNode(true) as Element);
 	return span;
 }
 
@@ -63,16 +87,16 @@ function build(doc: Document, text: string, bounds: MathBounds, katex: Katex): E
  * bolds half a formula, and handling it would mean rebuilding the subtree.
  */
 export function renderMath(root: Element, katex: Katex, caret?: number | null): boolean {
-	unrenderMath(root);
+	const removed = unrenderMath(root);
 
 	const { segments, text } = segmentsOf(root);
 	const equations = renderableEquations(text).filter(
 		(bounds) => caret == null || caret < bounds.outer_start || caret > bounds.outer_end,
 	);
-	if (!equations.length) return false;
+	if (!equations.length) return removed;
 
 	const doc = root.ownerDocument;
-	let changed = false;
+	let changed = removed;
 
 	// Back to front, so replacing one equation cannot shift the next one's node.
 	for (const segment of [...segments].reverse()) {

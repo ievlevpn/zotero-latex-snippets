@@ -47,10 +47,16 @@ plain text, so there an equation is `$…$` / `$$…$$` exactly as in Obsidian �
 which is also what makes it portable: it survives sync and export, and "Add Note
 from Annotations" turns it into a real equation in the note.
 
-`$…$` renders as you write: a moment after you stop typing, every equation in
-the comment is drawn except the one the cursor is inside, which stays as source
-so you can keep editing it. Works in the reader sidebar, the in-page popups, and
-the item pane's annotation list.
+`$…$` renders as you write. Every equation in the comment is drawn except the
+one the cursor is inside, which stays as source so you can keep editing it —
+click a rendered equation to get back into it. Works in the reader sidebar, the
+in-page popups, and the item pane's annotation list.
+
+Typing does not disturb the equations you are not editing. Zotero reads a
+comment back out of its own DOM on every keystroke, so the rendering has to come
+out of the way first; it goes back in during the same event, before the browser
+paints, and from a cache keyed on the LaTeX source — so an equation only goes
+through KaTeX again when its source actually changes.
 
 Rendering is via KaTeX's MathML output, which Firefox draws natively, so the
 plugin ships no fonts. Inline `$…$` has to look like an equation and not like
