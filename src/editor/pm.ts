@@ -68,7 +68,24 @@ export function nearSelection(doc: PMNode, pos: number, bias: 1 | -1 = 1): any |
 	}
 }
 
+/**
+ * A NodeSelection, which is what prosemirror-math watches for to open an
+ * equation's editor.
+ *
+ * There is no module to import it from, but ProseMirror registers its selection
+ * classes for deserialisation — `Selection.jsonID("node", NodeSelection)` — so
+ * `Selection.fromJSON` reaches it by name. That is deterministic: it does not
+ * depend on having happened to observe a NodeSelection first.
+ */
 export function nodeSelection(doc: PMNode, pos: number): any | null {
+	if (!NodeSelectionClass && TextSelectionClass) {
+		try {
+			const Selection = Object.getPrototypeOf(TextSelectionClass);
+			NodeSelectionClass = Selection.fromJSON(doc, { type: "node", anchor: pos }).constructor;
+		} catch {
+			/* fall back to whatever has been seen */
+		}
+	}
 	if (!NodeSelectionClass) return null;
 	try {
 		return NodeSelectionClass.create(doc, pos);

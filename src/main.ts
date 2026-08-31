@@ -36,6 +36,9 @@ type Trace = {
 	before?: string;
 	from?: number;
 	to?: number;
+	/** how many snippets were eligible: automatic ones, and ones bound to this key */
+	auto?: number;
+	manual?: number;
 	after?: string;
 	handled: boolean;
 };
@@ -148,7 +151,15 @@ function handleKeydown(event: KeyboardEvent): boolean {
 		return false;
 	}
 
-	trace = record({ key, where: `${where}/${buffer.kind}`, before: buffer.text, from: buffer.from, to: buffer.to, handled: false });
+	trace = record({
+		key,
+		where: `${where}/${buffer.kind}`,
+		before: buffer.text,
+		from: buffer.from,
+		to: buffer.to,
+		auto: automaticSnippets.length,
+		handled: false,
+	});
 
 	// 1. Automatic snippets, on any plain printable key.
 	if (settings.snippetsEnabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
@@ -158,6 +169,7 @@ function handleKeydown(event: KeyboardEvent): boolean {
 	// 2. Manual snippets (Tab by default, or the snippet's own triggerKey).
 	if (settings.snippetsEnabled) {
 		const manual = manualSnippetsFor(key);
+		trace.manual = manual.length;
 		if (manual.length && runSnippets(window, { snippets: manual }, settings, buffer)) return true;
 	}
 

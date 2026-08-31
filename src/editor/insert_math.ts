@@ -106,10 +106,6 @@ export function expandAsMath(win: any, buffer: Buffer, from: number, to: number,
 			core.view.dispatch(tr);
 		}
 	}
-	// ponytail: inline math on an otherwise empty block falls back to Zotero's
-	// insertMath(), which makes it display, until the first NodeSelection of the
-	// session has been seen (clicking any equation is enough). Harmless, and it
-	// self-corrects after one interaction.
 
 	insertEmptyMath(core, math.display);
 	rememberSelectionClass(core.view);

@@ -120,9 +120,8 @@ Where it deliberately differs:
 - **`language` and code-block modes are limited.** A Zotero code block carries no
   language, so a snippet with `language: "python"` can never match; plain `c` and
   `C` work.
-- **On an otherwise empty paragraph, `mk` gives display math** until you have
-  clicked any equation once in that window. Cosmetic; see the `ponytail:` note in
-  `src/editor/insert_math.ts`.
+- **Conceal, inline math preview and bracket colouring are absent**, as above:
+  Zotero already renders the equation.
 
 ## Layout
 
