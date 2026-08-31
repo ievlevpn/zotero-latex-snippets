@@ -129,6 +129,17 @@ export class TextBuffer implements Buffer {
 		this.applyChange(from, to, insert);
 	}
 
+	editRange(from: number, to: number, insert: string) {
+		const caret = selectionOffsets(this.element);
+		this.select(from, to);
+		this.insert(from, to, insert);
+		if (!caret) return;
+		const delta = insert.length - (to - from);
+		const shift = (offset: number) =>
+			offset <= from ? offset : offset >= to ? offset + delta : from + insert.length;
+		this.select(shift(caret.from), shift(caret.to));
+	}
+
 	selectRange(range: Range) {
 		this.select(range.from, range.to);
 	}

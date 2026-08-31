@@ -38,12 +38,12 @@ function viewOf(doc, from, to = from) {
 }
 
 /** The nested view prosemirror-math opens on an equation. */
-function mathView(text, cursor = text.length, type = "math_inline") {
+export function mathView(text, cursor = text.length, type = "math_inline") {
 	return viewOf(schema.nodes[type].create(null, text ? schema.text(text) : null), cursor);
 }
 
 /** A window whose activeElement sits inside that equation, as Zotero's would. */
-function winFor(view, type = "math_inline") {
+export function winFor(view, type = "math_inline") {
 	const el = { tagName: type.replace("_", "-").toUpperCase(), pmViewDesc: { spec: { _innerView: view } } };
 	return { document: { activeElement: { closest: (sel) => (sel === ".math-node" ? el : null) } } };
 }
@@ -88,6 +88,19 @@ class StringBuffer {
 	}
 	watch() {}
 }
+
+/** A window shaped like the note editor's: an EditorCore on the iframe window. */
+function noteWin(view, activeElement = null) {
+	view.hasFocus = () => true;
+	view.dom = { closest: () => null, ownerDocument: { defaultView: null } };
+	return {
+		_currentEditorInstance: { _editorCore: { view, insertMath: () => { throw new Error("fell back to insertMath"); } } },
+		document: { activeElement, getElementById: () => null },
+	};
+}
+
+const docOf = (...blocks) => schema.nodes.doc.create(null, blocks);
+const para = (...content) => schema.nodes.paragraph.create(null, content.length ? content : undefined);
 
 export function run() {
 	/* --- the reported bug: "@a" must consume the "@" *and* the typed "a" --- */
@@ -310,6 +323,85 @@ export function run() {
 		const buffer = new StringBuffer("a $x^2$ b", 6);
 		assert.strictEqual(buffer.exitMath(), true);
 		assert.strictEqual(buffer.from, 7, "cursor lands after the closing dollar");
+	}
+
+	/* --- notes, text mode: the path `m`/`dm` take --- */
+	{
+		// a paragraph containing just "m", caret after it
+		const view = viewOf(docOf(para(schema.text("m"))), 2);
+		const win = noteWin(view);
+
+		const buffer = ls.currentBuffer(win);
+		assert.ok(buffer, "a focused paragraph is an editable buffer");
+		assert.strictEqual(buffer.kind, "text");
+		assert.strictEqual(buffer.text, "m");
+
+		const settings = settingsFor(`export default [{trigger: "m", replacement: "$$0$", options: "t"}]`);
+		const manual = settings.snippets.filter((s) => !s.options.automatic);
+		assert.strictEqual(manual.length, 1, "a snippet without A is Tab-triggered");
+		assert.strictEqual(ls.runSnippets(win, { snippets: manual }, settings), true, "m + Tab expands");
+
+		// the "m" is gone and an inline equation stands in its place
+		const paragraph = view.state.doc.firstChild;
+		assert.strictEqual(paragraph.textContent, "", "the trigger is consumed");
+		assert.strictEqual(paragraph.childCount, 1);
+		assert.strictEqual(paragraph.child(0).type.name, "math_inline", "inline, not display");
+		assert.strictEqual(view.state.selection.node?.type.name, "math_inline", "the equation is selected, which opens it");
+		ls.clearTabstops();
+	}
+
+	/* --- notes, text mode: dm gives display math --- */
+	{
+		const view = viewOf(docOf(para(schema.text("dm"))), 3);
+		const win = noteWin(view);
+		// String.raw: the snippet source must contain a literal \n, not a newline
+		const settings = settingsFor(String.raw`export default [{trigger: "dm", replacement: "$$\n$0\n$$", options: "t"}]`);
+		ls.runSnippets(win, { snippets: settings.snippets.filter((s) => !s.options.automatic) }, settings);
+		assert.strictEqual(view.state.doc.firstChild.type.name, "math_display");
+		ls.clearTabstops();
+	}
+
+	/* --- auto-enlarge brackets --- */
+	{
+		const settings = settingsFor("export default []");
+		const enlarge = (source, cursor = source.length) => {
+			const view = mathView(source, cursor);
+			ls.autoEnlargeBrackets(winFor(view), settings);
+			return text(view);
+		};
+
+		assert.strictEqual(enlarge("(\\sum_{i} a_i)"), "\\left( \\sum_{i} a_i \\right)");
+		assert.strictEqual(enlarge("(a + b)"), "(a + b)", "no trigger inside, so left alone");
+		assert.strictEqual(
+			enlarge("\\left( \\sum_{i} a_i \\right)"),
+			"\\left( \\sum_{i} a_i \\right)",
+			"already enlarged, so not enlarged again",
+		);
+		assert.strictEqual(enlarge("[\\int f]"), "\\left[ \\int f \\right]");
+		assert.strictEqual(enlarge("x + (\\frac{a}{b})"), "x + \\left( \\frac{a}{b} \\right)");
+		// nested
+		assert.strictEqual(enlarge("((\\int f))"), "\\left( \\left( \\int f \\right) \\right)");
+	}
+
+	/* --- enlarging brackets must not eat the snippet's own tabstops --- */
+	{
+		// "$" + "{" so the template literal does not try to interpolate ${1:x}
+		const settings = settingsFor(
+			String.raw`export default [{trigger: "int", replacement: "\\int $0 \\, d` + "${1:x}" + String.raw` $2", options: "mA"}]`);
+
+		const auto = settings.snippets.filter((s) => s.options.automatic);
+
+		// "(in|)" — a closed pair, so \int inside it triggers auto-enlarge
+		const view = mathView("(in)", 3);
+		ls.runSnippets(winFor(view), { snippets: auto, key: "t" }, settings);
+		assert.strictEqual(text(view), "\\left( \\int  \\, dx \\right)");
+
+		// the cursor is still where the snippet put it, and Tab still works
+		assert.strictEqual(text(view).slice(0, view.state.selection.from).endsWith("\\int "), true);
+		assert.strictEqual(ls.setSelectionToNextTabstop(ls.PMBuffer.forMath(view, "math_inline"), false), true);
+		const [from, to] = cursor(view);
+		assert.strictEqual(text(view).slice(from, to), "x", "the dx placeholder survived the enlargement");
+		ls.clearTabstops();
 	}
 
 	console.log("editor-layer tests passed");

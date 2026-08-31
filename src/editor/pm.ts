@@ -269,6 +269,15 @@ export class PMBuffer implements Buffer {
 		this.applyChange(from, to, insert);
 	}
 
+	editRange(from: number, to: number, insert: string) {
+		const pmFrom = this.pmPos(from);
+		const pmTo = this.pmPos(to);
+		const tr = this.view.state.tr;
+		tr.replaceWith(pmFrom, pmTo, this.fragment(insert, pmFrom));
+		// No setSelection: ProseMirror maps the existing one through the change.
+		this.view.dispatch(tr);
+	}
+
 	/** Move the cursor, using text offsets. */
 	setSelection(from: number, to: number = from) {
 		this.setSelectionPM(this.pmPos(from), this.pmPos(to));

@@ -49,6 +49,13 @@ export interface Buffer {
 	/** Replace `[from, to)`, cursor after the insertion. */
 	replaceRange(from: number, to: number, insert: string): void;
 
+	/**
+	 * Replace `[from, to)` without moving the cursor — for edits made *around*
+	 * what the user is doing, such as enlarging brackets after an expansion. The
+	 * editor maps the selection, and tabstops with it.
+	 */
+	editRange(from: number, to: number, insert: string): void;
+
 	/** Select a range previously returned by `applyChange`. */
 	selectRange(range: Range): void;
 

@@ -2,9 +2,14 @@
  *
  * Upstream walks a lezer parse tree; here the equation is a short flat string,
  * so a bracket scan over it says the same thing for a fraction of the code.
- * All the pairs are enlarged in a single replacement so the cursor only has to
- * be adjusted once.
+ *
+ * The edits are applied one at a time, back to front, and each one leaves the
+ * cursor alone. Rewriting the whole equation in one go would be tidier, but it
+ * collapses every tabstop the snippet just created onto the edges of the
+ * replacement — `int` inside brackets would enlarge them and lose its own `dx`
+ * placeholder.
  */
+import { Buffer } from "src/editor/buffer";
 import { currentBuffer } from "src/editor/index";
 import { findMatchingBracket } from "src/utils/editor_utils";
 import { Settings } from "src/settings/settings";
@@ -60,18 +65,15 @@ export function autoEnlargeBrackets(win: any, settings: Settings): boolean {
 
 	if (edits.length === 0) return false;
 
-	edits.sort((a, b) => a.from - b.from);
+	// Back to front, so an edit never shifts the offsets of the ones still to come.
+	edits.sort((a, b) => b.from - a.from);
 
-	let rebuilt = "";
-	let offset = 0;
-	let cursor = buffer.to;
+	let current: Buffer | null = buffer;
 	for (const edit of edits) {
-		rebuilt += text.slice(offset, edit.from) + edit.insert;
-		if (edit.to <= buffer.to) cursor += edit.insert.length - (edit.to - edit.from);
-		offset = edit.to;
+		if (!current || !current.inMath) break;
+		current.editRange(edit.from, edit.to, edit.insert);
+		current = currentBuffer(win);
 	}
-	rebuilt += text.slice(offset);
 
-	buffer.applyChange(0, text.length, rebuilt, [], { from: cursor, to: cursor });
 	return true;
 }

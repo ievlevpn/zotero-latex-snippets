@@ -11,4 +11,6 @@ export { IncludedEnvironmentResult } from "./snippets/snippets";
 export { PMBuffer, rememberSelectionClass } from "./editor/pm";
 export { expandSnippet, setSelectionToNextTabstop, clearTabstops } from "./snippets/snippet_management";
 export { runSnippets, expand } from "./features/run_snippets";
+export { currentBuffer } from "./editor/index";
+export { autoEnlargeBrackets } from "./features/auto_enlarge_brackets";
 export { runAutoFraction } from "./features/autofraction";
