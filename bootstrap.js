@@ -22,6 +22,16 @@ const PREF = "extensions.zotero.latexSnippets.settings";
  * These exist so the settings pane can show what a field falls back to.
  * test.js fails if the two drift apart. */
 const FIELDS = [
+	{ group: "Snippet files", key: "loadSnippetsFromFile", type: "bool", default: false,
+		label: "Load snippets from a file",
+		hint: "Point at a .js file \u2014 an obsidian-latex-suite snippets file works as-is. Re-read whenever it changes on disk." },
+	{ group: "Snippet files", key: "snippetsFileLocation", type: "file", default: "",
+		label: "Snippets file" },
+	{ group: "Snippet files", key: "loadSnippetVariablesFromFile", type: "bool", default: false,
+		label: "Load snippet variables from a file" },
+	{ group: "Snippet files", key: "snippetVariablesFileLocation", type: "file", default: "",
+		label: "Snippet variables file" },
+
 	{ group: "Snippets", key: "snippetsEnabled", type: "bool", default: true,
 		label: "Enable snippets" },
 	{ group: "Snippets", key: "snippetsTrigger", type: "text", default: "Tab",
@@ -109,6 +119,19 @@ let onReaderEvent = null;
  * it is not something to do casually. Cached until the pref changes. */
 let overridesCache = null;
 let overridesJSON = null;
+let payloadJSON = null;
+
+/* Snippets can come from a file on disk instead of the settings pane — the
+ * point being that an obsidian-latex-suite snippets file works unchanged. The
+ * engine runs in a content window and cannot read files, so the contents are
+ * read here and travel with the settings. */
+const SOURCES = [
+	{ key: "snippets", enabledKey: "loadSnippetsFromFile", pathKey: "snippetsFileLocation" },
+	{ key: "snippetVariables", enabledKey: "loadSnippetVariablesFromFile", pathKey: "snippetVariablesFileLocation" },
+];
+
+const fileSources = new Map(); // settings key -> { path, text, modified, error }
+let pollTimer = null;
 
 function readOverrides() {
 	if (overridesCache) return overridesCache;
@@ -132,14 +155,107 @@ function readOverrides() {
 function forgetOverrides() {
 	overridesCache = null;
 	overridesJSON = null;
+	payloadJSON = null;
 }
 
-// Only the overrides travel; the content script merges them over its own
-// defaults, so an unset field always follows the shipped default. The stored
-// pref is already this exact JSON, so hand it over rather than re-serialising.
+function fileSourceFor(source) {
+	const overrides = readOverrides();
+	const enabled = overrides[source.enabledKey] === true;
+	const path = (overrides[source.pathKey] || "").trim();
+	return enabled && path ? path : null;
+}
+
+/**
+ * Re-read whichever sources come from disk. Returns true if anything changed,
+ * so callers know whether the open editors need telling.
+ */
+async function refreshFileSources() {
+	let changed = false;
+
+	for (const source of SOURCES) {
+		const path = fileSourceFor(source);
+		if (!path) {
+			if (fileSources.delete(source.key)) changed = true;
+			continue;
+		}
+
+		const previous = fileSources.get(source.key);
+		let modified = 0;
+		try {
+			// nsIFile rather than IOUtils: confirmed present in this scope, and a
+			// stat is cheap enough not to be worth an async round trip.
+			const file = Zotero.File.pathToFile(path);
+			if (!file.exists()) throw new Error("no such file");
+			modified = file.lastModifiedTime;
+		} catch (e) {
+			// Missing or unreadable: keep the last good copy rather than dropping
+			// the user's snippets because a vault happens to be offline.
+			if (previous && previous.error) continue;
+			fileSources.set(source.key, { path, text: previous?.text ?? null, modified: 0, error: String(e) });
+			Zotero.debug("LaTeX Snippets: cannot stat " + path + " - " + e);
+			changed = true;
+			continue;
+		}
+
+		if (previous && previous.path === path && previous.modified === modified && !previous.error) continue;
+
+		try {
+			const text = await Zotero.File.getContentsAsync(path, "utf-8");
+			fileSources.set(source.key, { path, text, modified, error: null });
+			changed = true;
+		} catch (e) {
+			fileSources.set(source.key, { path, text: previous?.text ?? null, modified: 0, error: String(e) });
+			Zotero.debug("LaTeX Snippets: cannot read " + path + " - " + e);
+			changed = true;
+		}
+	}
+
+	if (changed) payloadJSON = null;
+	return changed;
+}
+
+/** Poll for edits to those files, but only while at least one is in use. */
+function syncFilePolling() {
+	const wanted = SOURCES.some((source) => fileSourceFor(source));
+	if (wanted === !!pollTimer) return;
+
+	if (!wanted) {
+		clearInterval(pollTimer);
+		pollTimer = null;
+		return;
+	}
+	// A stat every few seconds is nothing, and it means editing snippets in your
+	// own editor shows up in Zotero without a round trip through settings.
+	pollTimer = setInterval(async () => {
+		try {
+			if (await refreshFileSources()) pushSettings();
+		} catch (e) {
+			Zotero.debug("LaTeX Snippets: " + e);
+		}
+	}, 3000);
+}
+
+/**
+ * What travels to the engine: the overrides, plus any source read from disk.
+ *
+ * Only the overrides are sent, not a full settings object, so a field the user
+ * never touched keeps following the shipped default.
+ */
 function settingsJSON() {
+	if (payloadJSON) return payloadJSON;
+
 	readOverrides();
-	return overridesJSON;
+	if (fileSources.size === 0) {
+		payloadJSON = overridesJSON; // already exactly this JSON; don't re-serialise
+		return payloadJSON;
+	}
+
+	const payload = { ...overridesCache };
+	for (const [key, source] of fileSources) {
+		if (source.text !== null) payload[key] = source.text;
+	}
+	payloadJSON = JSON.stringify(payload);
+	return payloadJSON;
 }
 
 function mathEnabled() {
@@ -231,9 +347,18 @@ function eachTarget(fn) {
 	}
 }
 
+/** Hand the current settings to every editor that is already open. */
+function pushSettings() {
+	const json = settingsJSON();
+	eachTarget((win) => {
+		const content = win.wrappedJSObject;
+		if (content.__latexSnippetsReload) content.__latexSnippetsReload(json);
+	});
+	eachItemPane((handle) => handle.refresh());
+}
+
 async function onSettingsChanged() {
 	forgetOverrides();
-	const json = settingsJSON();
 
 	// A reader that started with rendering off has no KaTeX yet; give it one
 	// before telling the engine to look again.
@@ -246,11 +371,9 @@ async function onSettingsChanged() {
 		}
 	}
 
-	eachTarget((win) => {
-		const content = win.wrappedJSObject;
-		if (content.__latexSnippetsReload) content.__latexSnippetsReload(json);
-	});
-	eachItemPane((handle) => handle.refresh());
+	syncFilePolling();
+	await refreshFileSources();
+	pushSettings();
 }
 
 /* --- the item pane's annotation rows ------------------------------------- */
@@ -368,8 +491,22 @@ async function startup({ id, rootURI: uri }) {
 	}
 	await ensureKatexScript();
 
+	syncFilePolling();
+	await refreshFileSources();
+
 	// The prefs pane reads these instead of duplicating them.
-	Zotero.LatexSnippets = { PREF, FIELDS, defaultSnippets, defaultSnippetVariables };
+	Zotero.LatexSnippets = {
+		PREF,
+		FIELDS,
+		defaultSnippets,
+		defaultSnippetVariables,
+		/** What each file-backed source is doing right now, for the settings pane. */
+		fileStatus: (key) => fileSources.get(key) ?? null,
+		reloadFiles: async () => {
+			await refreshFileSources();
+			pushSettings();
+		},
+	};
 
 	Zotero.PreferencePanes.register({
 		pluginID: id,
@@ -430,6 +567,10 @@ function shutdown() {
 		handle.destroy();
 		itemPaneWindows.delete(window);
 	});
+
+	if (pollTimer) clearInterval(pollTimer);
+	pollTimer = null;
+	fileSources.clear();
 
 	if (prefObserver) Zotero.Prefs.unregisterObserver(prefObserver);
 	prefObserver = null;

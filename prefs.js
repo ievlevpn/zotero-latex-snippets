@@ -17,6 +17,17 @@
 		const { PREF, FIELDS, defaultSnippets, defaultSnippetVariables } = Zotero.LatexSnippets;
 		const h = (tag) => document.createElementNS(XHTML, tag);
 
+		async function pickFile(input) {
+			const { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs");
+			const fp = new FilePicker();
+			fp.init(window, "Select a snippets file", fp.modeOpen);
+			fp.appendFilter("JavaScript", "*.js");
+			fp.appendFilters(fp.filterAll);
+			if ((await fp.show()) !== fp.returnOK) return;
+			input.value = fp.file;
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+		}
+
 		const read = () => {
 			try {
 				const parsed = JSON.parse(Zotero.Prefs.get(PREF, true) || "{}");
@@ -49,7 +60,10 @@
 			else overrides[key] = value;
 			if (immediate) write();
 			else writeSoon();
+			onChanged();
 		};
+
+		let onChanged = () => {};
 
 		window.addEventListener("unload", write, { once: true });
 
@@ -107,7 +121,48 @@
 		wireCodeArea("ls-snippets", defaultSnippets, "snippets", checkModule("snippets"));
 		wireCodeArea("ls-variables", defaultSnippetVariables, "snippetVariables", checkModule("variables"));
 
+		/* The boxes above are ignored while their source is a file; grey them out
+		 * rather than letting someone edit text that is not being used. */
+		function syncCodeAreas() {
+			for (const [areaID, enabledKey] of [
+				["ls-snippets", "loadSnippetsFromFile"],
+				["ls-variables", "loadSnippetVariablesFromFile"],
+			]) {
+				const area = document.getElementById(areaID);
+				if (!area) continue;
+				const fromFile = overrides[enabledKey] === true;
+				area.disabled = fromFile;
+				area.title = fromFile ? "Loaded from a file; edit that file instead." : "";
+			}
+		}
+
 		/* --- the scalar fields, grouped --- */
+
+		/* Whether a file actually loads is the whole question with this setting, so
+		 * say so rather than leaving it to be discovered in a note. */
+		const fileStatuses = [];
+		const sourceKeyFor = (key) => (key.startsWith("snippetVariables") ? "snippetVariables" : "snippets");
+
+		async function refreshFileStatuses() {
+			for (const { field, input, status } of fileStatuses) {
+				const path = input.value.trim();
+				if (!path) {
+					status.textContent = "";
+					status.classList.remove("ls-error");
+					continue;
+				}
+				const key = sourceKeyFor(field.key);
+				const loaded = Zotero.LatexSnippets.fileStatus(key);
+				try {
+					const source = await Zotero.File.getContentsAsync(path, "utf-8");
+					status.textContent = checkModule(key === "snippets" ? "snippets" : "variables")(source);
+					status.classList.remove("ls-error");
+				} catch (e) {
+					status.textContent = String((loaded && loaded.error) || e.message || e);
+					status.classList.add("ls-error");
+				}
+			}
+		}
 
 		let currentGroup = null;
 		let body = null;
@@ -154,6 +209,13 @@
 				}
 				input.value = stored;
 				input.addEventListener("change", () => setValue(field.key, input.value, field.default, true));
+			} else if (field.type === "file") {
+				input = h("input");
+				input.type = "text";
+				input.value = stored;
+				input.placeholder = "/path/to/latex_suite_snippets.js";
+				input.addEventListener("input", () => setValue(field.key, input.value.trim(), field.default));
+				input.addEventListener("blur", write);
 			} else if (field.type === "code") {
 				input = h("textarea");
 				input.className = "ls-code";
@@ -177,6 +239,19 @@
 			if (field.type === "bool") row.append(input, label);
 			else row.append(label, input);
 
+			if (field.type === "file") {
+				const browse = h("button");
+				browse.type = "button";
+				browse.textContent = "Browse\u2026";
+				browse.addEventListener("click", () => pickFile(input));
+				row.append(browse);
+
+				const status = h("div");
+				status.className = "ls-field-hint";
+				row.append(status);
+				fileStatuses.push({ field, input, status });
+			}
+
 			if (field.hint) {
 				const hint = h("div");
 				hint.className = "ls-field-hint";
@@ -186,6 +261,12 @@
 
 			body.append(row);
 		}
+
+		onChanged = () => {
+			syncCodeAreas();
+			refreshFileStatuses();
+		};
+		onChanged();
 	}
 
 	const start = () => {

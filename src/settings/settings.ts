@@ -19,6 +19,13 @@ export interface RawSettings {
 	/** JavaScript source: `export default { … }` */
 	snippetVariables: string;
 
+	/* Reading the file is chrome's job — the engine only ever sees source text —
+	 * but the settings live here with everything else. */
+	loadSnippetsFromFile: boolean;
+	snippetsFileLocation: string;
+	loadSnippetVariablesFromFile: boolean;
+	snippetVariablesFileLocation: string;
+
 	snippetsEnabled: boolean;
 	snippetsTrigger: string;
 	snippetNextTabstopTrigger: string;
@@ -72,6 +79,11 @@ export const DEFAULT_SNIPPET_VARIABLES = DEFAULT_SNIPPET_VARIABLES_SOURCE;
 export const DEFAULT_SETTINGS: RawSettings = {
 	snippets: DEFAULT_SNIPPETS,
 	snippetVariables: DEFAULT_SNIPPET_VARIABLES,
+
+	loadSnippetsFromFile: false,
+	snippetsFileLocation: "",
+	loadSnippetVariablesFromFile: false,
+	snippetVariablesFileLocation: "",
 
 	snippetsEnabled: true,
 	snippetsTrigger: "Tab",

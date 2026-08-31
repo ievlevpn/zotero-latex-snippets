@@ -17,6 +17,21 @@ dint Tab 2pi Tab sin @t Tab @t Tab  →  \int_{0}^{2\pi} \sin \theta \, d\theta
 Ships with Latex Suite's [default snippets](src/default_snippets.js) — 220-odd
 of them. Edit, remove, or add your own in **Settings → LaTeX Snippets**.
 
+### Sharing snippets with Obsidian
+
+If you already use obsidian-latex-suite, point this at the same file:
+**Settings → LaTeX Snippets → Snippet files → Load snippets from a file**, then
+browse to it. The format is identical, so a vault's `latex_suite_snippets.js`
+works unchanged — including regex triggers, `${VARIABLE}` substitution, visual
+snippets and function replacements.
+
+The file is re-read whenever it changes on disk, so editing snippets in your own
+editor shows up in Zotero without touching its settings. If the file goes away —
+a vault on a drive that is not mounted, say — the last version that loaded stays
+in use rather than leaving you with no snippets. Snippet variables can come from
+a file the same way; Obsidian keeps those in the plugin's `data.json` rather than
+a file of their own, so paste them into the settings box instead.
+
 ## Install
 
 Download `latex-snippets.xpi` from the
