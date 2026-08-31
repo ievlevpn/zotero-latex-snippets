@@ -1,0 +1,18 @@
+{
+  "addons": {
+    "latex-snippets@local": {
+      "updates": [
+        {
+          "version": "0.1.0",
+          "update_link": "https://github.com/ievlevpn/zotero-latex-snippets/releases/download/v0.1.0/latex-snippets.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "10.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
