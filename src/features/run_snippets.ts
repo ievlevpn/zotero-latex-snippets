@@ -64,9 +64,12 @@ function runSnippetCursor(
 
 	const { from, to } = { from: buffer.from, to: buffer.to };
 	const sel = buffer.selectedText;
-	const line = buffer.text.slice(0, to);
+	// A space the browser stored as U+00A0 is still a space to a trigger, and to
+	// the word-boundary test. Same length, so offsets are unaffected.
+	const text = buffer.text.replace(/\u00a0/g, " ");
+	const line = text.slice(0, to);
 	let cachedLineAfter: string | null = null;
-	const effectiveLineAfter = () => (cachedLineAfter ??= buffer.text.slice(to));
+	const effectiveLineAfter = () => (cachedLineAfter ??= text.slice(to));
 	const effectiveLine = line + key;
 
 	const scopes = ctx.getEnvNames();
@@ -86,7 +89,7 @@ function runSnippetCursor(
 		const triggerPos = result.triggerPos;
 		const triggerEndPos = result.triggerEndPos !== undefined ? result.triggerEndPos - key.length : to;
 
-		if (snippet.options.onWordBoundary && !isOnWordBoundary(buffer.text, triggerPos, to, settings.wordDelimiters)) {
+		if (snippet.options.onWordBoundary && !isOnWordBoundary(text, triggerPos, to, settings.wordDelimiters)) {
 			continue;
 		}
 

@@ -90,7 +90,9 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 		}
 
 		const removed = unrenderMath(field);
-		clearRenderState(field);
+		// Only when something came out: the recorded state is still accurate
+		// otherwise, and clearing it would force a needless rebuild on every key.
+		if (removed) clearRenderState(field);
 
 		if (removed && selection) {
 			try {
