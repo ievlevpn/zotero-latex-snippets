@@ -23,13 +23,13 @@ import { COMMENT_FIELD } from "src/editor/contenteditable";
 /** Long enough for a burst of React updates to settle, short enough not to be felt. */
 const SETTLE_MS = 100;
 
-export function installAnnotationRendering(win: any): () => void {
+/** Returns a teardown function, or null when there is nothing to render with yet. */
+export function installAnnotationRendering(win: any): (() => void) | null {
 	const doc: Document = win.document;
 	const katex = win.katex;
-	if (!katex) {
-		console.warn("latex-snippets: KaTeX did not load; annotations will not render math");
-		return () => {};
-	}
+	// Chrome injects KaTeX only when rendering is switched on, and may do so
+	// after this bundle loads; returning null leaves the door open to retry.
+	if (!katex) return null;
 
 	const fields = () => Array.from(doc.querySelectorAll(COMMENT_FIELD)) as HTMLElement[];
 	const fieldOf = (node: unknown) => (node as HTMLElement)?.closest?.(COMMENT_FIELD) as HTMLElement | null;
@@ -49,13 +49,22 @@ export function installAnnotationRendering(win: any): () => void {
 	const dirty = new Set<HTMLElement>();
 	let sweep = false;
 	let timer = 0;
+	let deadline = Infinity;
 
 	const schedule = (delay: number, all = false) => {
 		if (all) sweep = true;
 		if (!sweep && dirty.size === 0) return;
+
+		// Caret movement fires steadily while selecting; re-arming on each one
+		// would push the render out indefinitely, so an earlier deadline wins.
+		const at = Date.now() + delay;
+		if (timer && at >= deadline) return;
+
 		win.clearTimeout(timer);
+		deadline = at;
 		timer = win.setTimeout(() => {
 			timer = 0;
+			deadline = Infinity;
 			const targets = sweep ? fields() : Array.from(dirty);
 			sweep = false;
 			dirty.clear();
@@ -70,9 +79,32 @@ export function installAnnotationRendering(win: any): () => void {
 	const onInputCapture = (event: Event) => {
 		const field = fieldOf(event.target);
 		if (!field) return;
-		const selection = selectionOffsets(field);
-		if (unrenderMath(field) && selection) setCaret(field, selection.from, selection.to);
+
+		// Measuring the caret can fail in odd DOM states, and it must never be the
+		// reason the rendering survives into Zotero's read-back — that would save
+		// MathML into the annotation. Unrender first, restore the caret after.
+		let selection: { from: number; to: number } | null = null;
+		try {
+			selection = selectionOffsets(field);
+		} catch (e) {
+			console.error("latex-snippets:", e);
+		}
+
+		const removed = unrenderMath(field);
 		clearRenderState(field);
+
+		if (removed && selection) {
+			try {
+				setCaret(field, selection.from, selection.to);
+			} catch (e) {
+				console.error("latex-snippets:", e);
+			}
+		}
+
+		// A safety net: if the bubble half never runs — something stopping
+		// propagation, or throwing — the comment would sit as source indefinitely.
+		dirty.add(field);
+		schedule(SETTLE_MS);
 	};
 
 	/* Bubble phase of the same event: React has read the comment by now, so the
@@ -83,7 +115,11 @@ export function installAnnotationRendering(win: any): () => void {
 		if (!field) return;
 		// Rewriting the DOM mid-composition would abort the IME; wait it out.
 		if ((event as InputEvent).isComposing) return;
-		renderField(field);
+		try {
+			renderField(field);
+		} catch (e) {
+			console.error("latex-snippets:", e);
+		}
 	};
 
 	const onCompositionEnd = () => schedule(0, true);
@@ -92,6 +128,7 @@ export function installAnnotationRendering(win: any): () => void {
 	 * read-only as soon as it renders: it is an atom, so the caret cannot enter
 	 * it, and no snippet can ever see math mode there again. */
 	const onMouseDown = (event: MouseEvent) => {
+		if (event.button !== 0) return; // a right-click wants the context menu
 		const span = (event.target as HTMLElement)?.closest?.(`[${SOURCE_ATTR}]`) as HTMLElement | null;
 		if (!span) return;
 		const field = fieldOf(span);
@@ -154,6 +191,8 @@ export function installAnnotationRendering(win: any): () => void {
 	return () => {
 		observer.disconnect();
 		win.clearTimeout(timer);
+		timer = 0;
+		deadline = Infinity;
 		dirty.clear();
 		doc.removeEventListener("input", onInputCapture, true);
 		doc.removeEventListener("input", onInputBubble, false);

@@ -175,11 +175,21 @@ function inject(win, { withKatex } = {}) {
 }
 
 /* KaTeX is a quarter of a megabyte, and notes never need it — Zotero renders
- * their equations itself. Load it only into readers, and only when annotation
- * rendering is actually switched on. */
+ * their equations itself. Read it only if annotation rendering is switched on,
+ * and inject it only into readers. */
+async function ensureKatexScript() {
+	if (katexScript !== null || !mathEnabled()) return katexScript;
+	try {
+		katexScript = await Zotero.File.getResourceAsync(rootURI + "vendor/katex.min.js");
+	} catch (e) {
+		Zotero.debug("LaTeX Snippets: could not read KaTeX - " + e);
+	}
+	return katexScript;
+}
+
 function ensureKatex(win) {
 	const content = win.wrappedJSObject;
-	if (content.katex || !mathEnabled()) return false;
+	if (content.katex || !katexScript || !mathEnabled()) return false;
 	runScript(win.document, katexScript);
 	return true;
 }
@@ -221,12 +231,13 @@ function eachTarget(fn) {
 	}
 }
 
-function onSettingsChanged() {
+async function onSettingsChanged() {
 	forgetOverrides();
 	const json = settingsJSON();
 
 	// A reader that started with rendering off has no KaTeX yet; give it one
 	// before telling the engine to look again.
+	await ensureKatexScript();
 	for (const reader of Zotero.Reader._readers || []) {
 		try {
 			if (reader?._iframeWindow) ensureKatex(reader._iframeWindow);
@@ -304,7 +315,7 @@ function installItemPaneRendering(window) {
 	};
 
 	const observer = new window.MutationObserver(schedule);
-	observer.observe(root, { childList: true, subtree: true, characterData: true });
+	observer.observe(root, { childList: true, subtree: true });
 	schedule();
 
 	return {
@@ -345,10 +356,17 @@ async function startup({ id, rootURI: uri }) {
 
 	// getResourceAsync, not getContentsFromURLAsync: rootURI is a jar: URL when
 	// the plugin is installed packed, and only the channel-based reader handles it.
-	contentScript = await Zotero.File.getResourceAsync(rootURI + "build/content-script.js");
-	katexScript = await Zotero.File.getResourceAsync(rootURI + "vendor/katex.min.js");
-	defaultSnippets = await Zotero.File.getResourceAsync(rootURI + "src/default_snippets.js");
-	defaultSnippetVariables = await Zotero.File.getResourceAsync(rootURI + "src/default_snippet_variables.js");
+	try {
+		contentScript = await Zotero.File.getResourceAsync(rootURI + "build/content-script.js");
+		defaultSnippets = await Zotero.File.getResourceAsync(rootURI + "src/default_snippets.js");
+		defaultSnippetVariables = await Zotero.File.getResourceAsync(rootURI + "src/default_snippet_variables.js");
+	} catch (e) {
+		// Without these there is nothing to inject; say so rather than failing
+		// silently and leaving no settings pane either.
+		Zotero.logError(new Error("LaTeX Snippets: could not read its own files - " + e));
+		return;
+	}
+	await ensureKatexScript();
 
 	// The prefs pane reads these instead of duplicating them.
 	Zotero.LatexSnippets = { PREF, FIELDS, defaultSnippets, defaultSnippetVariables };

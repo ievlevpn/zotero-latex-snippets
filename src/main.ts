@@ -21,6 +21,8 @@ declare const window: any;
 
 const FLAG = "__latexSnippetsInstalled";
 
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Dead"]);
+
 let settings: Settings | null = null;
 let automaticSnippets: Snippet[] = [];
 
@@ -54,7 +56,17 @@ function describeFocus(): string {
 	return `${active.nodeName.toLowerCase()}${classes}`;
 }
 
+let lastSettingsJSON: string | undefined;
+
 function loadSettings(json: string | undefined) {
+	// Re-injection is idempotent and happens whenever a window is re-attached;
+	// parsing hundreds of snippets again for identical settings is not free.
+	if (settings && json === lastSettingsJSON) {
+		syncAnnotationRendering(); // KaTeX may have arrived since the last look
+		return;
+	}
+	lastSettingsJSON = json;
+
 	let raw: RawSettings = DEFAULT_SETTINGS;
 	try {
 		if (json) raw = { ...DEFAULT_SETTINGS, ...JSON.parse(json) };
@@ -88,7 +100,10 @@ function syncAnnotationRendering() {
 	const wanted = !!settings?.annotationMathEnabled && isReaderWindow(window);
 	if (wanted === !!stopRendering) return;
 	if (wanted) stopRendering = installAnnotationRendering(window);
-	else { stopRendering?.(); stopRendering = null; }
+	else {
+		stopRendering?.();
+		stopRendering = null;
+	}
 }
 
 /* Filtering every snippet on every keystroke, to nearly always get an empty
@@ -112,6 +127,9 @@ function handleKeydown(event: KeyboardEvent): boolean {
 	// Don't fire mid-composition: an IME's first keydown reports keyCode 229 and
 	// neither `isComposing` nor `event.key` is meaningful yet.
 	if (event.isComposing || (event as any).keyCode === 229) return false;
+
+	// Fires on every chord; there is nothing here that a bare modifier can trigger.
+	if (MODIFIER_KEYS.has(event.key)) return false;
 
 	const core = getEditorCore(window);
 	if (core?.view) rememberSelectionClass(core.view);

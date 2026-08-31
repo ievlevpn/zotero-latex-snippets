@@ -48,7 +48,12 @@ export function segmentsOf(root: Node): { segments: Segment[]; text: string } {
 }
 
 /** Text offset -> a DOM point. Rendered equations are atomic: before, or after. */
-export function domPointAt(root: Element, segments: Segment[], offset: number): { node: Node; offset: number } {
+export function domPointAt(root: Element, segments: Segment[], target: number): { node: Node; offset: number } {
+	// Clamp rather than throw: an offset from a stale measurement should put the
+	// caret somewhere sane, not take down whatever was mid-keystroke.
+	const last = segments[segments.length - 1];
+	const offset = Math.max(0, Math.min(target, last ? last.start + last.length : 0));
+
 	for (const segment of segments) {
 		if (offset > segment.start + segment.length) continue;
 		if (segment.kind === "text") return { node: segment.node, offset: offset - segment.start };

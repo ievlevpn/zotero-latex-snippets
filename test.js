@@ -225,8 +225,15 @@ const { FIELDS } = require("./bootstrap.js");
 	assert.strictEqual(win.__latexSnippetsInstalled, true);
 	assert.ok(win.__latexSnippets.settings.snippets.length > 200);
 
-	win.__latexSnippetsReload(JSON.stringify({ snippets: `export default [{trigger: "zz", replacement: "ZZ", options: "mA"}]` }));
+	const oneSnippet = JSON.stringify({ snippets: `export default [{trigger: "zz", replacement: "ZZ", options: "mA"}]` });
+	win.__latexSnippetsReload(oneSnippet);
 	assert.deepStrictEqual(win.__latexSnippets.settings.snippets.map((s) => s.trigger), ["zz"]);
+
+	// Re-attaching a window pushes the same settings again; parsing every snippet
+	// a second time for an identical payload is pure waste.
+	const parsed = win.__latexSnippets.settings;
+	win.__latexSnippetsReload(oneSnippet);
+	assert.strictEqual(win.__latexSnippets.settings, parsed, "identical settings should not be re-parsed");
 
 	// Broken snippets fall back to the defaults rather than leaving no engine.
 	const realError = console.error;

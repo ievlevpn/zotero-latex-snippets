@@ -103,13 +103,13 @@ export class TextBuffer implements Buffer {
 		const expected = this.text.slice(0, from) + insert + this.text.slice(to);
 
 		try {
-			if (doc.execCommand("insertText", false, insert) && segmentsOf(this.element).text === expected) return;
+			doc.execCommand("insertText", false, insert);
 		} catch {
-			/* fall through */
+			/* fall through to the manual edit */
 		}
-		if (segmentsOf(this.element).text === expected) return;
 
-		const { segments } = segmentsOf(this.element);
+		const { segments, text } = segmentsOf(this.element);
+		if (text === expected) return;
 		const start = domPointAt(this.element, segments, from);
 		const end = domPointAt(this.element, segments, to);
 		const range = doc.createRange();
