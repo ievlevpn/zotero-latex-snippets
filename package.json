@@ -8,7 +8,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "katex": "^0.16.11",
     "esbuild": "^0.25.0",
+    "katex": "^0.18.4",
     "prosemirror-model": "^1.25.11",
     "prosemirror-state": "^1.4.4",
     "typescript": "^5.7.0"

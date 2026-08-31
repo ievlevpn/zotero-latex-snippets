@@ -49,6 +49,9 @@ export interface RawSettings {
 	autoEnlargeBrackets: boolean;
 	autoEnlargeBracketsSpace: boolean;
 	autoEnlargeBracketsTriggers: string;
+
+	annotationSnippetsEnabled: boolean;
+	annotationMathEnabled: boolean;
 }
 
 export type Settings = Omit<
@@ -103,6 +106,9 @@ export const DEFAULT_SETTINGS: RawSettings = {
 	autoEnlargeBrackets: true,
 	autoEnlargeBracketsSpace: true,
 	autoEnlargeBracketsTriggers: "sum, int, frac, prod, bigcup, bigcap",
+
+	annotationSnippetsEnabled: true,
+	annotationMathEnabled: true,
 };
 
 function strToArray(str: string) {

@@ -1,20 +1,20 @@
 /* Expanding a snippet and walking its tabstops.
  *
  * Latex Suite queues change specs into a CodeMirror state field and flushes them
- * in one dispatch; here a snippet is always one contiguous replacement inside one
- * buffer, so it is one ProseMirror transaction and the queue disappears.
+ * in one dispatch; here a snippet is always one contiguous replacement inside
+ * one buffer, so it is one edit and the queue disappears.
  *
- * Tabstop positions are kept as ProseMirror positions and mapped through every
- * later transaction on that view, so typing into a placeholder grows its range
- * the way CodeMirror's mark decorations did.
+ * Tabstop positions are kept in whatever coordinates the buffer's backend uses
+ * and remapped through every later edit to it, so typing into a placeholder
+ * grows its range the way CodeMirror's mark decorations did.
  */
-import { Buffer, PMView, textSelection } from "src/editor/pm";
+import { Buffer, Range } from "src/editor/buffer";
 import { ResultInsert } from "./luasnip_api/node";
-import { TabstopRange, tabstopSpecsToTabstopGroups } from "./tabstop";
+import { tabstopSpecsToTabstopGroups } from "./tabstop";
 
 type ActiveSnippet = {
-	view: PMView;
-	groups: TabstopRange[][];
+	owner: object;
+	groups: Range[][];
 	index: number;
 };
 
@@ -28,28 +28,6 @@ export function clearTabstops() {
 
 export function hasTabstops() {
 	return active !== null;
-}
-
-/**
- * Keep tabstop positions valid across edits made by anyone — us, the user, or
- * the outer editor syncing an equation back into a nested view.
- */
-function watchView(view: PMView) {
-	if (view.__latexSnippetsWatched) return;
-	view.__latexSnippetsWatched = true;
-	const original = view.dispatch.bind(view);
-	view.dispatch = (tr: any) => {
-		if (active && active.view === view && tr.docChanged) {
-			active.groups = active.groups.map((group) =>
-				group.map((range) => ({
-					// -1 / 1 so text typed inside a placeholder extends it
-					from: tr.mapping.map(range.from, -1),
-					to: tr.mapping.map(range.to, 1),
-				})),
-			);
-		}
-		return original(tr);
-	};
 }
 
 /** Replace `[from, to)` in `buffer` with a snippet result, then select tabstop 0. */
@@ -69,15 +47,20 @@ export function expandSnippet(buffer: Buffer, from: number, to: number, result: 
 	let cursor = 0;
 	const placedGroups = groups.map((group) => group.map(() => placed[cursor++]));
 
-	watchView(buffer.view);
-	active = { view: buffer.view, groups: placedGroups, index: 0 };
+	const owner = buffer.owner;
+	buffer.watch((map) => {
+		if (active && active.owner === owner) {
+			active.groups = active.groups.map((group) => group.map(map));
+		}
+	});
+	active = { owner, groups: placedGroups, index: 0 };
 	return true;
 }
 
 /** Tab / Shift-Tab between tabstops. Returns false when there is nowhere to go. */
-export function setSelectionToNextTabstop(view: PMView, shiftKey: boolean): boolean {
+export function setSelectionToNextTabstop(buffer: Buffer, shiftKey: boolean): boolean {
 	if (!active) return false;
-	if (active.view !== view) {
+	if (active.owner !== buffer.owner) {
 		// A different buffer (or the same equation reopened as a fresh nested
 		// view): the recorded positions no longer refer to anything.
 		clearTabstops();
@@ -87,20 +70,18 @@ export function setSelectionToNextTabstop(view: PMView, shiftKey: boolean): bool
 	const direction = shiftKey ? -1 : 1;
 	let next = active.index + direction;
 
+	const current = active.groups[active.index]?.[0];
+
 	while (next >= 0 && next < active.groups.length) {
 		const target = active.groups[next][0];
-		const current = view.state.selection;
-		if (current.from === target.from && current.to === target.to) {
+		// Adjacent tabstops can collapse onto the same spot; stepping onto one we
+		// are already sitting at would make Tab look broken.
+		if (current && target.from === current.from && target.to === current.to) {
 			next += direction;
 			continue;
 		}
 
-		const tr = view.state.tr;
-		const sel = textSelection(tr.doc, target.from, target.to);
-		if (!sel) return false;
-		tr.setSelection(sel);
-		view.dispatch(tr);
-
+		buffer.selectRange(target);
 		active.index = next;
 		if (next === active.groups.length - 1 && direction === 1) clearTabstops();
 		return true;

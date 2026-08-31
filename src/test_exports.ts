@@ -3,10 +3,11 @@
 export { DEFAULT_SETTINGS, DEFAULT_SNIPPETS, processSettings } from "./settings/settings";
 export { parseSnippets, parseSnippetVariables, parseKeyName, keyNameFromEvent } from "./snippets/parse";
 export { scanScopes, Context } from "./utils/context";
+export { scanEquations, mathBoundsAt, renderableEquations } from "./utils/math_bounds";
 export { tabstopSpecsToTabstopGroups } from "./snippets/tabstop";
 export { asMathReplacement } from "./editor/insert_math";
 export { Options } from "./snippets/options";
-export { Buffer, rememberSelectionClass } from "./editor/pm";
+export { PMBuffer, rememberSelectionClass } from "./editor/pm";
 export { expandSnippet, setSelectionToNextTabstop, clearTabstops } from "./snippets/snippet_management";
 export { runSnippets, expand } from "./features/run_snippets";
 export { runAutoFraction } from "./features/autofraction";

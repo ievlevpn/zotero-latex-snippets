@@ -14,7 +14,8 @@ node test.js
 
 rm -f "$XPI"
 zip -q -r "$XPI" manifest.json bootstrap.js icon.svg prefs.xhtml prefs.js prefs.css LICENSE \
-	build/content-script.js src/default_snippets.js src/default_snippet_variables.js
+	build/content-script.js build/render.js vendor/ \
+	src/default_snippets.js src/default_snippet_variables.js
 
 # Regenerate update.json so update_link always points at this version's asset.
 REPO="$REPO" node -e '

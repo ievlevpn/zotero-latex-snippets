@@ -40,6 +40,19 @@ Download `latex-snippets.xpi` from the
 - **Auto-enlarge brackets** — a bracket pair containing `\sum`, `\int`, `\frac`…
   grows a `\left`/`\right`.
 
+### Annotations
+
+Snippets and rendering also work in PDF/EPUB **annotation comments**. Those are
+plain text, so there an equation is `$…$` / `$$…$$` exactly as in Obsidian —
+which is also what makes it portable: it survives sync and export, and "Add Note
+from Annotations" turns it into a real equation in the note.
+
+`$…$` renders as math whenever the comment isn't being edited, in the reader
+sidebar, the in-page popups, and the item pane's annotation list. Rendering is
+via KaTeX's MathML output, which Firefox draws natively, so the plugin ships no
+fonts. Inline `$…$` has to look like an equation and not like "$5 and $10", so a
+dollar pair with a space just inside it is left alone.
+
 ## How it maps onto Zotero
 
 Zotero notes aren't markdown: an equation is a node in the note, and its LaTeX
@@ -53,6 +66,8 @@ most of the mapping easy and one part interesting:
   an inline equation, `dm` a display one, with the tabstops inside it.
 - **`t` (text mode) is the note itself** — paragraphs, headings, list items.
 - **`c` / `C` (code) is a Zotero code block.**
+- **In annotations none of that applies** — they hold plain text, so math is
+  found by scanning for `$` the way Latex Suite does.
 
 Features that only made sense against markdown are not here: conceal, inline
 math preview, and bracket colouring all exist to show you what your `$…$` means,
@@ -76,9 +91,13 @@ bootstrap.js            chrome side: settings pane, and injecting the engine
 src/
   main.ts               keymap, in DOCS.md#keymap-order
   default_snippets.js   the shipped snippets, copied verbatim from upstream
-  editor/               the ProseMirror layer that replaces CodeMirror
-    pm.ts               finding the editor, and a flat-string view of it
-    insert_math.ts      `$…$` in text mode -> an equation node
+  editor/               what replaces CodeMirror: a flat string and a cursor
+    buffer.ts           the contract, and its two backends
+    pm.ts               ProseMirror, for notes
+    contenteditable.ts  plain contenteditable, for annotation comments
+    insert_math.ts      `$…$` in text mode -> an equation node (notes only)
+  reader/annotations.ts rendering `$…$` in the reader
+  render/math.ts        KaTeX -> MathML, shared with the item pane
   snippets/             parse.ts, snippets.ts, options.ts, tabstop.ts,
                         snippet_management.ts, sort.ts, luasnip_api/
   features/             run_snippets, autofraction, tabout, matrix_shortcuts,

@@ -1,7 +1,7 @@
 /* Ported from obsidian-latex-suite (src/features/autofraction.ts).
  * The numerator scan is unchanged; only the editor calls differ.
  */
-import { currentBuffer } from "src/editor/pm";
+import { currentBuffer } from "src/editor/index";
 import { findMatchingBracket, getOpenBracket } from "src/utils/editor_utils";
 import { Context } from "src/utils/context";
 import { Settings } from "src/settings/settings";

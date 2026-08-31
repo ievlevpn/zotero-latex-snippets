@@ -10,11 +10,12 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { Buffer, BufferKind, Range } from "./buffer";
+import { MathBounds } from "src/utils/math_bounds";
+
 export type PMView = any;
 export type PMNode = any;
 export type PMTransaction = any;
-
-export type BufferKind = "math_inline" | "math_display" | "text" | "code";
 
 /** `resource://zotero/note-editor/editor.js` hangs the note editor off `window`. */
 export function getEditorCore(win: any): any {
@@ -87,7 +88,7 @@ type Segment = { textOff: number; textLen: number; pmOff: number; pmLen: number 
  * nested equation — is one character of text but several ProseMirror positions,
  * so the two are kept apart behind `pmPos`.
  */
-export class Buffer {
+export class PMBuffer implements Buffer {
 	view: PMView;
 	kind: BufferKind;
 	text: string;
@@ -108,8 +109,30 @@ export class Buffer {
 		this.to = to;
 	}
 
+	get owner(): object {
+		return this.view;
+	}
+
 	get inMath() {
 		return this.kind === "math_inline" || this.kind === "math_display";
+	}
+
+	/** Equations are nodes here, so dollars in the text are just dollars. */
+	get dollarMath() {
+		return false;
+	}
+
+	/** An equation node *is* the buffer, so its bounds are the whole of it. */
+	get mathBounds(): MathBounds | null {
+		if (!this.inMath) return null;
+		return {
+			display: this.kind === "math_display",
+			outer_start: 0,
+			inner_start: 0,
+			inner_end: this.text.length,
+			outer_end: this.text.length,
+			closed: true,
+		};
 	}
 
 	get selectedText() {
@@ -140,15 +163,15 @@ export class Buffer {
 		return this.text.length;
 	}
 
-	static forMath(view: PMView, kind: BufferKind): Buffer {
+	static forMath(view: PMView, kind: BufferKind): PMBuffer {
 		const doc = view.state.doc;
 		const text = doc.textContent;
 		const sel = view.state.selection;
 		const segments: Segment[] = [{ textOff: 0, textLen: text.length, pmOff: 0, pmLen: text.length }];
-		return new Buffer(view, kind, text, 0, segments, sel.from, sel.to);
+		return new PMBuffer(view, kind, text, 0, segments, sel.from, sel.to);
 	}
 
-	static forTextBlock(view: PMView): Buffer | null {
+	static forTextBlock(view: PMView): PMBuffer | null {
 		const sel = view.state.selection;
 		const $from = sel.$from;
 		const parent = $from.parent;
@@ -173,7 +196,7 @@ export class Buffer {
 
 		const base = $from.start();
 		const kind: BufferKind = parent.type.name === "codeBlock" ? "code" : "text";
-		const buf = new Buffer(view, kind, text, base, segments, 0, 0);
+		const buf = new PMBuffer(view, kind, text, base, segments, 0, 0);
 		buf.from = buf.textOffset(sel.from);
 		buf.to = buf.textOffset(sel.to);
 		return buf;
@@ -205,9 +228,9 @@ export class Buffer {
 		from: number,
 		to: number,
 		insert: string,
-		tabstops: readonly { from: number; to: number }[] = [],
-		selection?: { from: number; to: number },
-	): { from: number; to: number }[] {
+		tabstops: readonly Range[] = [],
+		selection?: Range,
+	): Range[] {
 		const pmFrom = this.pmPos(from);
 		const pmTo = this.pmPos(to);
 		const tr = this.view.state.tr;
@@ -234,6 +257,31 @@ export class Buffer {
 		this.setSelectionPM(this.pmPos(from), this.pmPos(to));
 	}
 
+	selectRange(range: Range) {
+		this.setSelectionPM(range.from, range.to);
+	}
+
+	exitMath(): boolean {
+		return this.inMath && exitMath(this.view);
+	}
+
+	/**
+	 * Positions stay valid by being mapped through every transaction on this
+	 * view — including the ones prosemirror-math makes when the outer document
+	 * syncs an equation back into its nested view.
+	 */
+	watch(remap: (map: (range: Range) => Range) => void) {
+		const view = this.view;
+		if (view.__latexSnippetsWatched) return;
+		view.__latexSnippetsWatched = true;
+		const original = view.dispatch.bind(view);
+		view.dispatch = (tr: any) => {
+			// -1 / 1 so text typed inside a placeholder extends it
+			if (tr.docChanged) remap((r) => ({ from: tr.mapping.map(r.from, -1), to: tr.mapping.map(r.to, 1) }));
+			return original(tr);
+		};
+	}
+
 	setSelectionPM(pmFrom: number, pmTo: number = pmFrom) {
 		const tr = this.view.state.tr;
 		const sel = textSelection(tr.doc, pmFrom, pmTo);
@@ -258,7 +306,7 @@ function flush(view: PMView) {
 }
 
 /** The buffer the cursor is in right now, math first. */
-export function currentBuffer(win: any): Buffer | null {
+export function currentBuffer(win: any): PMBuffer | null {
 	const core = getEditorCore(win);
 	if (core?.view) flush(core.view);
 
@@ -266,22 +314,22 @@ export function currentBuffer(win: any): Buffer | null {
 	if (math) {
 		flush(math.view);
 		rememberSelectionClass(math.view);
-		return Buffer.forMath(math.view, math.kind);
+		return PMBuffer.forMath(math.view, math.kind);
 	}
 
 	if (!core?.view || !core.view.hasFocus()) return null;
 	rememberSelectionClass(core.view);
-	return Buffer.forTextBlock(core.view);
+	return PMBuffer.forTextBlock(core.view);
 }
 
 /**
  * Move the cursor out of the equation the user is editing, to just after it.
  * prosemirror-math closes the nested editor and re-renders the KaTeX itself.
  */
-export function exitMath(win: any): boolean {
-	const el = win.document.activeElement?.closest?.(".math-node") as any;
+export function exitMath(innerView: PMView): boolean {
+	const el = innerView?.dom?.closest?.(".math-node") as any;
 	const mathView = el?.pmViewDesc?.spec;
-	const core = getEditorCore(win);
+	const core = getEditorCore(innerView?.dom?.ownerDocument?.defaultView);
 	if (!mathView || !core?.view) return false;
 
 	const pos = mathView._getPos();

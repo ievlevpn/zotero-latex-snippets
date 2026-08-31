@@ -6,7 +6,8 @@
  * and the tabstops inside it land inside the new node — which is what those
  * snippets mean.
  */
-import { Buffer, getActiveMathView, getEditorCore, nodeSelection, PMView, rememberSelectionClass } from "./pm";
+import { getActiveMathView, getEditorCore, nodeSelection, PMBuffer, PMView, rememberSelectionClass } from "./pm";
+import { Buffer } from "./buffer";
 import { ResultInsert } from "src/snippets/luasnip_api/node";
 import { expandSnippet } from "src/snippets/snippet_management";
 
@@ -120,7 +121,7 @@ export function expandAsMath(win: any, buffer: Buffer, from: number, to: number,
 	}
 	rememberSelectionClass(active.view);
 
-	const mathBuffer = Buffer.forMath(active.view, active.kind);
+	const mathBuffer = PMBuffer.forMath(active.view, active.kind);
 	expandSnippet(mathBuffer, 0, mathBuffer.text.length, math.inner);
 	return true;
 }

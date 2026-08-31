@@ -5,7 +5,7 @@
  * All the pairs are enlarged in a single replacement so the cursor only has to
  * be adjusted once.
  */
-import { currentBuffer } from "src/editor/pm";
+import { currentBuffer } from "src/editor/index";
 import { findMatchingBracket } from "src/utils/editor_utils";
 import { Settings } from "src/settings/settings";
 

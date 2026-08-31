@@ -4,7 +4,7 @@
  * hunting for the closing `$$` and the line after it, we step out of the math
  * node (see `exitMath`).
  */
-import { currentBuffer, exitMath } from "src/editor/pm";
+import { currentBuffer } from "src/editor/index";
 import { intersection } from "src/utils/editor_utils";
 import { Context } from "src/utils/context";
 import { Settings } from "src/settings/settings";
@@ -84,7 +84,7 @@ export function tabout(win: any, settings: Settings): boolean {
 	const isAtEnd = buffer.text.slice(cursor, bounds.inner_end).trim().length === 0;
 	if (!isAtEnd && settings.taboutExitEquationOnlyOnEOL) return false;
 
-	return exitMath(win);
+	return buffer.exitMath();
 }
 
 /** The end of the first unmatched closing delimiter after the cursor, or null. */

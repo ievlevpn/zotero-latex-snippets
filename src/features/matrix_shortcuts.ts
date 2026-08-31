@@ -4,7 +4,8 @@
  * leaves. Upstream reads document lines; an equation here is one string, so
  * "line" means "between newlines in the equation source".
  */
-import { Buffer, currentBuffer, exitMath } from "src/editor/pm";
+import { Buffer } from "src/editor/buffer";
+import { currentBuffer } from "src/editor/index";
 import { Context, Scope } from "src/utils/context";
 import { Settings } from "src/settings/settings";
 import { taboutByEnclosedBrackets } from "./tabout";
@@ -38,10 +39,10 @@ const addCellShortcut: Shortcut = (_win, buffer) => {
 
 /** Shift-Enter: end of the next row, or out of the equation. */
 const exitShortcut: Shortcut = (win, buffer, _ctx, _scope, settings) => {
-	if (!isMultiline(buffer)) return exitMath(win);
+	if (!isMultiline(buffer)) return buffer.exitMath();
 
 	const line = lineAround(buffer.text, buffer.to);
-	if (line.to >= buffer.text.length) return exitMath(win);
+	if (line.to >= buffer.text.length) return buffer.exitMath();
 
 	const next = lineAround(buffer.text, line.to + 1);
 	const nextText = buffer.text.slice(next.from, next.to);

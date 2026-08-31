@@ -4,7 +4,8 @@
  * The keymap order mirrors DOCS.md#keymap-order, minus the entries that have no
  * counterpart in Zotero (auto-deleting `$`, which is not text here, and vim).
  */
-import { currentBuffer, rememberSelectionClass, getEditorCore } from "./editor/pm";
+import { currentBuffer, isReaderWindow } from "./editor/index";
+import { rememberSelectionClass, getEditorCore } from "./editor/pm";
 import { keyNameFromEvent } from "./snippets/parse";
 import { DEFAULT_SETTINGS, processSettings, RawSettings, Settings } from "./settings/settings";
 import { runSnippets } from "./features/run_snippets";
@@ -14,6 +15,7 @@ import { addCellMatrixShortcut, exitMatrixShortcut, newlineMatrixShortcut, prior
 import { clearTabstops, setSelectionToNextTabstop } from "./snippets/snippet_management";
 import { Snippet } from "./snippets/snippets";
 import { Context } from "./utils/context";
+import { installAnnotationRendering } from "./reader/annotations";
 
 declare const window: any;
 
@@ -52,6 +54,18 @@ function loadSettings(json: string | undefined) {
 
 	automaticSnippets = settings ? settings.snippets.filter((s) => s.options.automatic) : [];
 	clearTabstops();
+	syncAnnotationRendering();
+}
+
+/* Rendering is only ever installed in a reader window, and only while it is
+ * switched on: turning it off has to put every `$…$` back. */
+let stopRendering: (() => void) | null = null;
+
+function syncAnnotationRendering() {
+	const wanted = !!settings?.annotationMathEnabled && isReaderWindow(window);
+	if (wanted === !!stopRendering) return;
+	if (wanted) stopRendering = installAnnotationRendering(window);
+	else { stopRendering?.(); stopRendering = null; }
 }
 
 /** Snippets bound to this key: an explicit `triggerKey`, or the default trigger. */
@@ -73,7 +87,7 @@ function handleKeydown(event: KeyboardEvent): boolean {
 
 	const buffer = currentBuffer(window);
 	if (!buffer) return false;
-	rememberSelectionClass(buffer.view);
+	if (isReaderWindow(window) && !settings.annotationSnippetsEnabled) return false;
 
 	const key = keyNameFromEvent(event);
 
@@ -93,8 +107,8 @@ function handleKeydown(event: KeyboardEvent): boolean {
 	}
 
 	// 3./4. Tabstops.
-	if (key === settings.snippetNextTabstopTrigger && setSelectionToNextTabstop(buffer.view, false)) return true;
-	if (key === settings.snippetPreviousTabstopTrigger && setSelectionToNextTabstop(buffer.view, true)) return true;
+	if (key === settings.snippetNextTabstopTrigger && setSelectionToNextTabstop(buffer, false)) return true;
+	if (key === settings.snippetPreviousTabstopTrigger && setSelectionToNextTabstop(buffer, true)) return true;
 
 	// 5. Auto-fraction.
 	if (settings.autofractionEnabled && key === settings.autofractionTrigger) {
@@ -182,6 +196,8 @@ function install() {
 		window.document.removeEventListener("keydown", onKeydown, true);
 		window.document.removeEventListener("beforeinput", onBeforeInput, true);
 		clearTabstops();
+		stopRendering?.();
+		stopRendering = null;
 		settings = null;
 		delete window[FLAG];
 		delete window.__latexSnippetsReload;

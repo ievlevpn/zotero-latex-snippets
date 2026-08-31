@@ -91,3 +91,45 @@ for both the outer and any inner view.
 Zotero already renders math live with KaTeX, so **conceal**, **inline math
 preview**, and **bracket colouring/highlighting** are either moot or would
 have to be reimplemented against a completely different rendering model.
+
+---
+
+# Annotations (the reader)
+
+`resource://zotero/reader/reader.html`, in an iframe like the note editor —
+`Zotero.Reader._readers[].._iframeWindow`, and Zotero itself goes through
+`wrappedJSObject`. The bundle (`reader.js`) is **not minified**, which makes
+this much easier to work against than the note editor.
+
+## No ProseMirror, no math nodes
+
+Annotation comments and text are edited in a plain `contenteditable` div
+(`.editor .content[contenteditable=true]`, `src/common/components/common/editor.js`).
+Value in: `innerRef.current.innerText = props.text`. Value out: `handleInput`
+turns the contenteditable HTML back into "Zotero HTML-flavored plain-text".
+
+The only markup allowed is `const supportedFormats = ['i', 'b', 'sub', 'sup']`
+— typed literally as `<b>…</b>` and converted by `walkFormat`/`walkUnformat`.
+
+So there is nowhere to put a math *node*: math in an annotation has to be
+`$…$` / `$$…$$` literal text. Which is exactly obsidian-latex-suite's own
+model, and portable — it survives sync, export, and "Add Note from
+Annotations", where the note editor's `$…$` input rule turns it into a real
+equation.
+
+Consequences for the port:
+- A second Buffer backend over a plain contenteditable: `innerText` plus a
+  caret offset. Edits through `document.execCommand("insertText", …)` so the
+  browser's undo stack and React's `onInput` both keep working.
+- Math mode has to be found by scanning for `$` delimiters — the part that
+  Zotero's note editor answered structurally and that this port skipped.
+
+## Rendering
+
+The reader ships MathJax, but only to render math *inside* EPUB/snapshot
+documents that carry a `text/x-mathjax-config` script (`src/dom/common/lib/math.ts`).
+Nothing renders math in annotations, and KaTeX is bundled inside the note
+editor's `editor.js` rather than exposed as a resource, so rendering in the
+reader means shipping a renderer.
+
+Gecko has native MathML, so a LaTeX→MathML renderer needs no CSS and no fonts.

@@ -5,6 +5,9 @@ and many more are close ports; see the header comment on each file. Both the
 original and this port are under the MIT license, reproduced once below for both
 copyright holders.
 
+KaTeX (vendor/katex.min.js) is bundled unmodified and carries its own MIT
+license, in vendor/KATEX-LICENSE.
+
 MIT License
 
 Copyright (c) 2026 Pavel Ievlev

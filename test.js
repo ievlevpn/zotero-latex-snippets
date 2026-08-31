@@ -192,6 +192,23 @@ const { FIELDS } = require("./bootstrap.js");
 		"Ctrl-a",
 	);
 
+	/* --- finding `$…$` in plain text, which is how annotations store math --- */
+	const bounds = (t) => ls.scanEquations(t).map((x) => [x.display, x.outer_start, x.inner_start, x.inner_end, x.outer_end, x.closed]);
+	assert.deepStrictEqual(bounds("a $x$ b"), [[false, 2, 3, 4, 5, true]]);
+	assert.deepStrictEqual(bounds("$$x$$"), [[true, 0, 2, 3, 5, true]]);
+	assert.deepStrictEqual(bounds("a $x"), [[false, 2, 3, 4, 4, false]], "an unclosed equation runs to the end");
+	assert.deepStrictEqual(bounds("\\$5 and $x$"), [[false, 8, 9, 10, 11, true]], "an escaped dollar is literal");
+	assert.strictEqual(ls.scanEquations("$a$ and $b$").length, 2);
+
+	assert.strictEqual(ls.mathBoundsAt("a $x$ b", 4).inner_start, 3);
+	assert.strictEqual(ls.mathBoundsAt("a $x$ b", 1), null, "outside an equation");
+	assert.strictEqual(ls.mathBoundsAt("$$y$$", 3).display, true);
+
+	// A reference manager is full of prices, so rendering is stricter than matching.
+	assert.deepStrictEqual(ls.renderableEquations("$5 and $10 each").map((x) => x.inner_start), []);
+	assert.deepStrictEqual(ls.renderableEquations("cost $x$ here").map((x) => x.inner_start), [6]);
+	assert.deepStrictEqual(ls.renderableEquations("$$ a+b $$").map((x) => x.display), [true]);
+
 	/* --- the built bundle installs, reloads and uninstalls cleanly --- */
 	const fs = require("fs");
 	const bundle = fs.readFileSync(__dirname + "/build/content-script.js", "utf8");

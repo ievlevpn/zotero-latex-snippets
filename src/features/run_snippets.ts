@@ -5,7 +5,8 @@
  * that there is one cursor rather than many (ProseMirror has no multi-selection)
  * and one buffer rather than a whole document.
  */
-import { Buffer, currentBuffer } from "src/editor/pm";
+import { Buffer } from "src/editor/buffer";
+import { currentBuffer } from "src/editor/index";
 import { asMathReplacement, expandAsMath } from "src/editor/insert_math";
 import { Context } from "src/utils/context";
 import { expandSnippet } from "src/snippets/snippet_management";
@@ -37,7 +38,7 @@ export function runSnippets(win: any, snippetInfo: SnippetInfo, settings: Settin
 
 /** Insert a snippet result, turning `$…$` in text mode into a real equation. */
 export function expand(win: any, buffer: Buffer, from: number, to: number, replacement: ResultInsert): boolean {
-	if (!buffer.inMath) {
+	if (!buffer.inMath && !buffer.dollarMath) {
 		const math = asMathReplacement(replacement);
 		if (math && expandAsMath(win, buffer, from, to, math)) return true;
 	}
@@ -64,7 +65,7 @@ function runSnippetCursor(
 	const effectiveLine = line + key;
 
 	const scopes = ctx.getEnvNames();
-	const api = { _view: buffer.view, _buffer: buffer };
+	const api = { _view: buffer.owner, _buffer: buffer };
 
 	for (const snippet of snippetInfo.snippets) {
 		const inIncludedScope = snippet.isWithinIncludedScope(scopes);

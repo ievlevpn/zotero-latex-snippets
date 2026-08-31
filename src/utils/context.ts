@@ -7,9 +7,10 @@
  * does.
  */
 import { Mode } from "src/snippets/options";
-import { Buffer } from "src/editor/pm";
+import { Buffer } from "src/editor/buffer";
 import { MacroArea, snippetLessArea, textArea } from "./default_text_areas";
 import { Environment } from "src/snippets/environment";
+import { MathBounds } from "./math_bounds";
 
 export type Scope = {
 	kind: "environment" | "command" | "group";
@@ -125,7 +126,12 @@ export class Context {
 
 	static fromBuffer(buffer: Buffer): Context {
 		const mode = new Mode();
-		const scopes = buffer.inMath ? scanScopes(buffer.text, buffer.to) : [];
+		const bounds = buffer.mathBounds;
+		// Scopes are scanned from the start of the equation, not the buffer: in an
+		// annotation the buffer is the whole comment, prose included.
+		const scopes = bounds
+			? scanScopes(buffer.text.slice(bounds.inner_start, bounds.inner_end), buffer.to - bounds.inner_start)
+			: [];
 
 		if (buffer.kind === "math_inline") mode.inlineMath = true;
 		else if (buffer.kind === "math_display") mode.blockMath = true;
@@ -143,10 +149,9 @@ export class Context {
 		return new Context(buffer, mode, scopes);
 	}
 
-	/** The whole equation, in buffer offsets. Latex Suite's `$…$` bounds. */
-	getBounds(): { inner_start: number; inner_end: number; outer_start: number; outer_end: number } | null {
-		if (!this.buffer.inMath) return null;
-		return { inner_start: 0, inner_end: this.buffer.text.length, outer_start: 0, outer_end: this.buffer.text.length };
+	/** The enclosing equation, in buffer offsets. Latex Suite's `$…$` bounds. */
+	getBounds(): MathBounds | null {
+		return this.buffer.mathBounds;
 	}
 
 	getEnvNames(): Scope[] {

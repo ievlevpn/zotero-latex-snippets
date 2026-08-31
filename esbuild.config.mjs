@@ -33,7 +33,17 @@ const opts = {
 	plugins: [rawImports],
 };
 
-// A second, ESM build of the pure parts, so test.js can exercise the engine
+// The renderer on its own, for the item pane: that runs in chrome, where the
+// content bundle cannot be injected, and duplicating the logic would let the
+// two drift apart.
+const renderOpts = {
+	...opts,
+	entryPoints: ["src/render_entry.ts"],
+	globalName: "LatexSnippetsRender",
+	outfile: "build/render.js",
+};
+
+// A third, ESM build of the pure parts, so test.js can exercise the engine
 // outside Zotero.
 const testOpts = {
 	...opts,
@@ -43,10 +53,22 @@ const testOpts = {
 	outfile: "build/test-exports.mjs",
 };
 
+// KaTeX is shipped as-is rather than bundled: the note editor never needs it,
+// so it is injected only into reader windows and loaded separately in chrome.
+// Copied from node_modules on every build so it cannot drift from package.json.
+await fs.mkdir("vendor", { recursive: true });
+for (const [from, to] of [
+	["node_modules/katex/dist/katex.min.js", "vendor/katex.min.js"],
+	["node_modules/katex/LICENSE", "vendor/KATEX-LICENSE"],
+]) {
+	await fs.copyFile(from, to);
+}
+
 if (process.argv.includes("--watch")) {
 	const ctx = await esbuild.context(opts);
 	await ctx.watch();
 } else {
 	await esbuild.build(opts);
+	await esbuild.build(renderOpts);
 	await esbuild.build(testOpts);
 }
