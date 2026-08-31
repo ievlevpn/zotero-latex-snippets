@@ -74,15 +74,14 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 		}, delay);
 	};
 
-	/* Capture phase, so this runs before React's onInput — which is attached at
-	 * the root container and would otherwise read our MathML back as the comment. */
-	const onInputCapture = (event: Event) => {
-		const field = fieldOf(event.target);
-		if (!field) return;
-
-		// Measuring the caret can fail in odd DOM states, and it must never be the
-		// reason the rendering survives into Zotero's read-back — that would save
-		// MathML into the annotation. Unrender first, restore the caret after.
+	/**
+	 * Take the rendering out, keeping the caret where it was.
+	 *
+	 * Measuring the caret can fail in odd DOM states, and that must never be the
+	 * reason the rendering survives — Zotero reads the comment back out of this
+	 * element, and MathML left in it would be saved into the annotation.
+	 */
+	function stripRendering(field: HTMLElement) {
 		let selection: { from: number; to: number } | null = null;
 		try {
 			selection = selectionOffsets(field);
@@ -100,6 +99,23 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 				console.error("latex-snippets:", e);
 			}
 		}
+	}
+
+	/* Before the edit happens, not after: a rendered equation is an atom the
+	 * caret cannot enter, and the browser's own editing commands — delete a word,
+	 * delete to the start of the line — misbehave when one is in the way. With
+	 * the source back in place they act on ordinary text. */
+	const onBeforeInput = (event: Event) => {
+		const field = fieldOf(event.target);
+		if (field) stripRendering(field);
+	};
+
+	/* Capture phase, so this runs before React's onInput — which is attached at
+	 * the root container and would otherwise read our MathML back as the comment. */
+	const onInputCapture = (event: Event) => {
+		const field = fieldOf(event.target);
+		if (!field) return;
+		stripRendering(field);
 
 		// A safety net: if the bubble half never runs — something stopping
 		// propagation, or throwing — the comment would sit as source indefinitely.
@@ -159,6 +175,7 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 		schedule(SETTLE_MS);
 	};
 
+	doc.addEventListener("beforeinput", onBeforeInput, true);
 	doc.addEventListener("input", onInputCapture, true);
 	doc.addEventListener("input", onInputBubble, false);
 	doc.addEventListener("compositionend", onCompositionEnd, true);
@@ -194,6 +211,7 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 		timer = 0;
 		deadline = Infinity;
 		dirty.clear();
+		doc.removeEventListener("beforeinput", onBeforeInput, true);
 		doc.removeEventListener("input", onInputCapture, true);
 		doc.removeEventListener("input", onInputBubble, false);
 		doc.removeEventListener("compositionend", onCompositionEnd, true);

@@ -22,7 +22,10 @@ export function segmentsOf(root: Node): { segments: Segment[]; text: string } {
 	const walk = (parent: Node) => {
 		for (const child of Array.from(parent.childNodes)) {
 			if (child.nodeType === 3) {
-				const value = (child as Text).data;
+				// A run of spaces typed into HTML comes back as non-breaking ones.
+				// Same length, so offsets are unaffected, and the comment reads as
+				// the spaces the user meant rather than U+00A0.
+				const value = (child as Text).data.replace(/\u00a0/g, " ");
 				segments.push({ kind: "text", start: text.length, length: value.length, node: child });
 				text += value;
 				continue;

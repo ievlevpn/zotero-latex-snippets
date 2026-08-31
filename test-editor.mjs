@@ -58,7 +58,7 @@ const cursor = (view) => [view.state.selection.from, view.state.selection.to];
 /* A Buffer over a plain string, standing in for an annotation comment.
  * The reader's real backend adds only DOM plumbing on top of this contract:
  * offsets into flat text, and edits that replace a range. */
-class StringBuffer {
+export class StringBuffer {
 	constructor(text, from = text.length, to = from) {
 		this.text = text;
 		this.from = from;
@@ -401,6 +401,27 @@ export function run() {
 		assert.strictEqual(ls.setSelectionToNextTabstop(ls.PMBuffer.forMath(view, "math_inline"), false), true);
 		const [from, to] = cursor(view);
 		assert.strictEqual(text(view).slice(from, to), "x", "the dx placeholder survived the enlargement");
+		ls.clearTabstops();
+	}
+
+	/* --- typing a trigger inside `$…$`, the way an annotation comment works --- */
+	{
+		const settings = settingsFor(
+			String.raw`export default [{trigger: "int", replacement: "\\int $0 \\, d` + "${1:x}" + String.raw` $2", options: "mA"}]`);
+		const auto = settings.snippets.filter((s) => s.options.automatic);
+		const win = { document: { activeElement: null, getElementById: () => ({}) } };
+
+		let buffer = new StringBuffer("$f(x) = $", 8);
+		for (const key of ["i", "n", "t"]) {
+			const before = buffer.text;
+			const at = buffer.to;
+			if (!ls.runSnippets(win, { snippets: auto, key }, settings, buffer)) {
+				buffer = new StringBuffer(before.slice(0, at) + key + before.slice(at), at + 1);
+			}
+		}
+		// One expansion, replacing exactly the "in" that was typed — no leftovers.
+		assert.strictEqual(buffer.text, "$f(x) = \\int  \\, dx$");
+		assert.strictEqual(buffer.text.slice(0, buffer.to), "$f(x) = \\int ", "cursor at the first tabstop");
 		ls.clearTabstops();
 	}
 

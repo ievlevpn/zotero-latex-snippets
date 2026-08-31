@@ -100,7 +100,7 @@ export class TextBuffer implements Buffer {
 	 */
 	private insert(from: number, to: number, insert: string) {
 		const doc = this.element.ownerDocument;
-		const expected = this.text.slice(0, from) + insert + this.text.slice(to);
+		const before = this.text;
 
 		try {
 			doc.execCommand("insertText", false, insert);
@@ -108,8 +108,13 @@ export class TextBuffer implements Buffer {
 			/* fall through to the manual edit */
 		}
 
-		const { segments, text } = segmentsOf(this.element);
-		if (text === expected) return;
+		// Only when the browser did nothing at all. It is allowed to differ from
+		// what we asked for — inserting consecutive spaces into HTML normalises
+		// them — and re-running the edit on text it has already changed applies it
+		// twice, against offsets that no longer mean anything.
+		if (segmentsOf(this.element).text !== before) return;
+
+		const { segments } = segmentsOf(this.element);
 		const start = domPointAt(this.element, segments, from);
 		const end = domPointAt(this.element, segments, to);
 		const range = doc.createRange();
