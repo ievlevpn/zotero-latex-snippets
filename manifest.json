@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "LaTeX Snippets",
-	"version": "0.3.2",
+	"version": "0.3.3",
 	"description": "Snippets for typing LaTeX in Zotero notes — a port of Obsidian Latex Suite's snippet engine, with the same snippet format.",
 	"author": "Pavel Ievlev",
 	"icons": {

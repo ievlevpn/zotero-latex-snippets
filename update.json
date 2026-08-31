@@ -3,8 +3,8 @@
     "latex-snippets@local": {
       "updates": [
         {
-          "version": "0.3.2",
-          "update_link": "https://github.com/ievlevpn/zotero-latex-snippets/releases/download/v0.3.2/latex-snippets.xpi",
+          "version": "0.3.3",
+          "update_link": "https://github.com/ievlevpn/zotero-latex-snippets/releases/download/v0.3.3/latex-snippets.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "6.999",
