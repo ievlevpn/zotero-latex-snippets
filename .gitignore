@@ -1,0 +1,5 @@
+*.xpi
+node_modules/
+.DS_Store
+misc/
+build/

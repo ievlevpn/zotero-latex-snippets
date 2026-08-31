@@ -1,0 +1,27 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml">
+	<groupbox>
+		<html:h2>Snippets</html:h2>
+		<html:p class="ls-hint">A JavaScript module with a default export of an array of snippets —
+			the same format as <html:a href="https://github.com/artisticat1/obsidian-latex-suite/blob/main/DOCS.md#snippets">Obsidian
+			Latex Suite</html:a>. Snippet files run as code, so be careful with snippets from others.</html:p>
+		<html:textarea id="ls-snippets" class="ls-code" rows="16" spellcheck="false"/>
+		<html:div class="ls-actions">
+			<html:button id="ls-snippets-reset" type="button">Reset to defaults</html:button>
+			<html:span id="ls-snippets-status" class="ls-status"/>
+		</html:div>
+	</groupbox>
+
+	<groupbox>
+		<html:h2>Snippet variables</html:h2>
+		<html:p class="ls-hint">Shorthands substituted into a snippet's <html:code>trigger</html:code>,
+			written as <html:code>${NAME}</html:code>. A JavaScript module with a default export of an object.</html:p>
+		<html:textarea id="ls-variables" class="ls-code" rows="8" spellcheck="false"/>
+		<html:div class="ls-actions">
+			<html:button id="ls-variables-reset" type="button">Reset to defaults</html:button>
+			<html:span id="ls-variables-status" class="ls-status"/>
+		</html:div>
+	</groupbox>
+
+	<html:div id="ls-fields"/>
+</vbox>

@@ -1,0 +1,19 @@
+{
+	"manifest_version": 2,
+	"name": "LaTeX Snippets",
+	"version": "0.1.0",
+	"description": "Snippets for typing LaTeX in Zotero notes — a port of Obsidian Latex Suite's snippet engine, with the same snippet format.",
+	"author": "Pavel Ievlev",
+	"icons": {
+		"48": "icon.svg",
+		"96": "icon.svg"
+	},
+	"applications": {
+		"zotero": {
+			"id": "latex-snippets@local",
+			"update_url": "https://raw.githubusercontent.com/ievlevpn/zotero-latex-snippets/master/update.json",
+			"strict_min_version": "6.999",
+			"strict_max_version": "10.*"
+		}
+	}
+}

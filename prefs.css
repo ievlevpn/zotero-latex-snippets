@@ -1,0 +1,28 @@
+/* Registered via the `stylesheets` option rather than an inline <style>: the
+ * pane markup is parsed with MozXULElement.parseXULToFragment, and this is the
+ * documented way to style a plugin pane. */
+.ls-hint { opacity: .8; margin: 0 0 6px; max-width: 46em; }
+.ls-code {
+	width: 100%;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 11px;
+	tab-size: 4;
+	white-space: pre;
+	resize: vertical;
+}
+.ls-actions { display: flex; gap: 8px; align-items: center; margin: 6px 0 2px; }
+.ls-status { font-size: 11px; opacity: .85; }
+.ls-status.ls-error { color: #c0392b; opacity: 1; }
+/* One row per setting: label, control, and an optional hint to the right.
+ * The row wraps rather than shrinking — without that the hint competes with the
+ * control for space and squeezes it to nothing. */
+.ls-row { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; margin: 5px 0; }
+.ls-row label { flex: 0 0 auto; min-width: 17em; }
+.ls-row input[type="text"], .ls-row select, .ls-row textarea.ls-code {
+	flex: 0 0 26em;
+	width: 26em;
+	max-width: 100%;
+}
+.ls-row input[type="number"] { flex: 0 0 auto; width: 5em; }
+.ls-row input[type="checkbox"] { flex: 0 0 auto; }
+.ls-row .ls-field-hint { flex: 1 1 14em; min-width: 0; opacity: .75; font-size: 11px; margin: 0; }
