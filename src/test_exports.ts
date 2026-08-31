@@ -7,6 +7,7 @@ export { scanEquations, mathBoundsAt, renderableEquations } from "./utils/math_b
 export { tabstopSpecsToTabstopGroups } from "./snippets/tabstop";
 export { asMathReplacement } from "./editor/insert_math";
 export { Options } from "./snippets/options";
+export { IncludedEnvironmentResult } from "./snippets/snippets";
 export { PMBuffer, rememberSelectionClass } from "./editor/pm";
 export { expandSnippet, setSelectionToNextTabstop, clearTabstops } from "./snippets/snippet_management";
 export { runSnippets, expand } from "./features/run_snippets";

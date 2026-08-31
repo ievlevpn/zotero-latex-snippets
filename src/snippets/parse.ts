@@ -35,15 +35,21 @@ const plainRequire = (module: string): unknown => {
 	throw new Error(`Cannot require("${module}") from a snippet file`);
 };
 
-export function parseSnippetVariables(snippetVariablesStr: string, identifier: string): SnippetVariables {
-	const raw = evaluateModule(snippetVariablesStr, identifier, plainRequire);
+export function parseSnippetVariables(source: string | string[], identifier: string): SnippetVariables {
+	const modules = Array.isArray(source) ? source : [source];
+	const merged: Record<string, string> = {};
 
-	if (Array.isArray(raw) || typeof raw !== "object" || raw === null) {
-		throw new Error("Snippet variables must be an object");
+	for (const [index, text] of modules.entries()) {
+		const name = modules.length > 1 ? `${identifier}[${index}]` : identifier;
+		const raw = evaluateModule(text, name, plainRequire);
+		if (Array.isArray(raw) || typeof raw !== "object" || raw === null) {
+			throw new Error(`${name} must export an object of snippet variables`);
+		}
+		Object.assign(merged, raw);
 	}
 
 	const snippetVariables: SnippetVariables = {};
-	for (const [variable, value] of Object.entries(raw as Record<string, string>)) {
+	for (const [variable, value] of Object.entries(merged)) {
 		if (variable.startsWith("${")) {
 			if (!variable.endsWith("}")) {
 				throw new Error(`Invalid snippet variable name '${variable}': starts with '\${' but does not end with '}'.`);
@@ -59,14 +65,25 @@ export function parseSnippetVariables(snippetVariablesStr: string, identifier: s
 	return snippetVariables;
 }
 
-export function parseSnippets(snippetsStr: string, snippetVariables: SnippetVariables, identifier: string): Snippet[] {
+/**
+ * `source` is one module, or several — a folder of snippet files, which is how
+ * upstream's own docs suggest organising a large set. They are concatenated and
+ * then sorted as one list, so priority means the same thing across files.
+ */
+export function parseSnippets(source: string | string[], snippetVariables: SnippetVariables, identifier: string): Snippet[] {
 	const parsedApi = api(snippetVariables);
 	const requireFn = (module: string) => {
 		if (module === "latex-suite" || module === "latex-snippets") return parsedApi;
 		return plainRequire(module);
 	};
 
-	const rawSnippets = evaluateModule(snippetsStr, identifier, requireFn);
+	const modules = Array.isArray(source) ? source : [source];
+	const rawSnippets = modules.flatMap((text, index) => {
+		const name = modules.length > 1 ? `${identifier}[${index}]` : identifier;
+		const value = evaluateModule(text, name, requireFn);
+		if (!Array.isArray(value)) throw new Error(`Expected ${name} to export an array of snippets`);
+		return value;
+	});
 
 	let parsed: Snippet[];
 	try {
@@ -182,9 +199,15 @@ function parseSnippet(raw: RawSnippet, snippetVariables: SnippetVariables): Snip
 
 		const excludedMacros = [...getExcludedMacros(triggerStr), ...raw.excludedMacros];
 
+		// A trigger given as a RegExp keeps its own constructor, so a drop-in
+		// replacement for RegExp (a PCRE implementation, say) still works.
+		const TriggerRegExp = raw.trigger instanceof RegExp ? (raw.trigger.constructor as RegExpConstructor) : RegExp;
+		const AfterRegExp =
+			raw.triggerAfter instanceof RegExp ? (raw.triggerAfter.constructor as RegExpConstructor) : RegExp;
+
 		// Anchor to the cursor: the trigger has to match where the caret is.
-		const trigger = new RegExp(`(?:${triggerStr})$`, flags);
-		const triggerAfter = triggerAfterStr ? new RegExp(`^(?:${triggerAfterStr})`, triggerAfterFlags) : undefined;
+		const trigger = new TriggerRegExp(`(?:${triggerStr})$`, flags);
+		const triggerAfter = triggerAfterStr ? new AfterRegExp(`^(?:${triggerAfterStr})`, triggerAfterFlags) : undefined;
 
 		options.regex = true;
 

@@ -14,10 +14,10 @@ import DEFAULT_SNIPPET_VARIABLES_SOURCE from "../default_snippet_variables.js?ra
 export type SnippetDebugLevel = "off" | "info" | "verbose";
 
 export interface RawSettings {
-	/** JavaScript source: `export default [ … ]` */
-	snippets: string;
-	/** JavaScript source: `export default { … }` */
-	snippetVariables: string;
+	/** JavaScript source: `export default [ … ]`. An array when several files. */
+	snippets: string | string[];
+	/** JavaScript source: `export default { … }`. An array when several files. */
+	snippetVariables: string | string[];
 
 	/* Reading the file is chrome's job — the engine only ever sees source text —
 	 * but the settings live here with everything else. */

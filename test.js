@@ -249,6 +249,9 @@ const { FIELDS } = require("./bootstrap.js");
 	const editor = await import("./test-editor.mjs");
 	editor.run();
 
+	const compat = await import("./test-compat.mjs");
+	compat.run();
+
 	console.log("all tests passed");
 })().catch((e) => {
 	console.error(e);

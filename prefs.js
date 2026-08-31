@@ -17,12 +17,15 @@
 		const { PREF, FIELDS, defaultSnippets, defaultSnippetVariables } = Zotero.LatexSnippets;
 		const h = (tag) => document.createElementNS(XHTML, tag);
 
-		async function pickFile(input) {
+		async function pick(input, folder) {
 			const { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs");
 			const fp = new FilePicker();
-			fp.init(window, "Select a snippets file", fp.modeOpen);
-			fp.appendFilter("JavaScript", "*.js");
-			fp.appendFilters(fp.filterAll);
+			fp.init(window, folder ? "Select a snippets folder" : "Select a snippets file",
+				folder ? fp.modeGetFolder : fp.modeOpen);
+			if (!folder) {
+				fp.appendFilter("JavaScript", "*.js");
+				fp.appendFilters(fp.filterAll);
+			}
 			if ((await fp.show()) !== fp.returnOK) return;
 			input.value = fp.file;
 			input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -154,8 +157,19 @@
 				const key = sourceKeyFor(field.key);
 				const loaded = Zotero.LatexSnippets.fileStatus(key);
 				try {
-					const source = await Zotero.File.getContentsAsync(path, "utf-8");
-					status.textContent = checkModule(key === "snippets" ? "snippets" : "variables")(source);
+					const { sources, files } = await Zotero.LatexSnippets.readSourceAt(path);
+					const check = checkModule(key === "snippets" ? "snippets" : "variables");
+					// Report the whole folder, not just whichever file failed first.
+					const counts = sources.map((source, i) => {
+						try {
+							return check(source);
+						} catch (e) {
+							throw new Error(files[i].leafName + ": " + (e.message || e));
+						}
+					});
+					status.textContent = files.length > 1
+						? `${files.length} files \u2014 ${counts.join(", ")}`
+						: counts[0];
 					status.classList.remove("ls-error");
 				} catch (e) {
 					status.textContent = String((loaded && loaded.error) || e.message || e);
@@ -240,11 +254,13 @@
 			else row.append(label, input);
 
 			if (field.type === "file") {
-				const browse = h("button");
-				browse.type = "button";
-				browse.textContent = "Browse\u2026";
-				browse.addEventListener("click", () => pickFile(input));
-				row.append(browse);
+				for (const [label, folder] of [["File\u2026", false], ["Folder\u2026", true]]) {
+					const browse = h("button");
+					browse.type = "button";
+					browse.textContent = label;
+					browse.addEventListener("click", () => pick(input, folder));
+					row.append(browse);
+				}
 
 				const status = h("div");
 				status.className = "ls-field-hint";

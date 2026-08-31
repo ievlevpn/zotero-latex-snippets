@@ -24,7 +24,7 @@ const PREF = "extensions.zotero.latexSnippets.settings";
 const FIELDS = [
 	{ group: "Snippet files", key: "loadSnippetsFromFile", type: "bool", default: false,
 		label: "Load snippets from a file",
-		hint: "Point at a .js file \u2014 an obsidian-latex-suite snippets file works as-is. Re-read whenever it changes on disk." },
+		hint: "Point at a .js file, or a folder of them \u2014 an obsidian-latex-suite snippets file works as-is. Re-read whenever it changes on disk." },
 	{ group: "Snippet files", key: "snippetsFileLocation", type: "file", default: "",
 		label: "Snippets file" },
 	{ group: "Snippet files", key: "loadSnippetVariablesFromFile", type: "bool", default: false,
@@ -130,7 +130,7 @@ const SOURCES = [
 	{ key: "snippetVariables", enabledKey: "loadSnippetVariablesFromFile", pathKey: "snippetVariablesFileLocation" },
 ];
 
-const fileSources = new Map(); // settings key -> { path, text, modified, error }
+const fileSources = new Map(); // settings key -> { path, text, stamp, error }
 let pollTimer = null;
 
 function readOverrides() {
@@ -165,6 +165,34 @@ function fileSourceFor(source) {
 	return enabled && path ? path : null;
 }
 
+/** A snippets path is a file, or a folder of them, as upstream's own docs suggest. */
+function filesAt(path) {
+	const target = Zotero.File.pathToFile(path);
+	if (!target.exists()) throw new Error("no such file or folder");
+	if (!target.isDirectory()) return [target];
+
+	const children = [];
+	const entries = target.directoryEntries;
+	while (entries.hasMoreElements()) {
+		const entry = entries.getNext().QueryInterface(Components.interfaces.nsIFile);
+		if (entry.isFile() && !entry.leafName.startsWith(".")) children.push(entry);
+	}
+	// By name, so priority ties break the same way on every machine.
+	children.sort((a, b) => (a.leafName < b.leafName ? -1 : a.leafName > b.leafName ? 1 : 0));
+	return children;
+}
+
+/** Names and mtimes together, so adding or removing a file counts as a change. */
+const stampOf = (files) => files.map((f) => f.leafName + ":" + f.lastModifiedTime).join("|");
+
+/** Read a path into what the engine wants: one source, or one per file. */
+async function readSourceAt(path) {
+	const files = filesAt(path);
+	if (!files.length) throw new Error("folder contains no files");
+	const sources = await Promise.all(files.map((f) => Zotero.File.getContentsAsync(f.path, "utf-8")));
+	return { sources, files, stamp: stampOf(files) };
+}
+
 /**
  * Re-read whichever sources come from disk. Returns true if anything changed,
  * so callers know whether the open editors need telling.
@@ -180,31 +208,29 @@ async function refreshFileSources() {
 		}
 
 		const previous = fileSources.get(source.key);
-		let modified = 0;
+		let stamp;
 		try {
 			// nsIFile rather than IOUtils: confirmed present in this scope, and a
 			// stat is cheap enough not to be worth an async round trip.
-			const file = Zotero.File.pathToFile(path);
-			if (!file.exists()) throw new Error("no such file");
-			modified = file.lastModifiedTime;
+			stamp = stampOf(filesAt(path));
 		} catch (e) {
 			// Missing or unreadable: keep the last good copy rather than dropping
 			// the user's snippets because a vault happens to be offline.
 			if (previous && previous.error) continue;
-			fileSources.set(source.key, { path, text: previous?.text ?? null, modified: 0, error: String(e) });
-			Zotero.debug("LaTeX Snippets: cannot stat " + path + " - " + e);
+			fileSources.set(source.key, { path, text: previous?.text ?? null, stamp: null, error: String(e) });
+			Zotero.debug("LaTeX Snippets: cannot read " + path + " - " + e);
 			changed = true;
 			continue;
 		}
 
-		if (previous && previous.path === path && previous.modified === modified && !previous.error) continue;
+		if (previous && previous.path === path && previous.stamp === stamp && !previous.error) continue;
 
 		try {
-			const text = await Zotero.File.getContentsAsync(path, "utf-8");
-			fileSources.set(source.key, { path, text, modified, error: null });
+			const { sources } = await readSourceAt(path);
+			fileSources.set(source.key, { path, text: sources.length === 1 ? sources[0] : sources, stamp, error: null });
 			changed = true;
 		} catch (e) {
-			fileSources.set(source.key, { path, text: previous?.text ?? null, modified: 0, error: String(e) });
+			fileSources.set(source.key, { path, text: previous?.text ?? null, stamp: null, error: String(e) });
 			Zotero.debug("LaTeX Snippets: cannot read " + path + " - " + e);
 			changed = true;
 		}
@@ -502,6 +528,7 @@ async function startup({ id, rootURI: uri }) {
 		defaultSnippetVariables,
 		/** What each file-backed source is doing right now, for the settings pane. */
 		fileStatus: (key) => fileSources.get(key) ?? null,
+		readSourceAt,
 		reloadFiles: async () => {
 			await refreshFileSources();
 			pushSettings();

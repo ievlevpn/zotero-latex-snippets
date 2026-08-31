@@ -97,11 +97,30 @@ Features that only made sense against markdown are not here: conceal, inline
 math preview, and bracket colouring all exist to show you what your `$…$` means,
 and Zotero already renders the equation as you type.
 
-Two known differences from upstream:
+### Compatibility
 
-- Undo of an automatic expansion is one step (it restores what you had before
-  the trigger, not the trigger itself), so the `U` option has no effect.
-- On an otherwise empty paragraph, `mk` gives display math until you have
+The snippet format is the promise this plugin makes, so every example in
+[Latex Suite's DOCS.md](https://github.com/artisticat1/obsidian-latex-suite/blob/main/DOCS.md)
+is a test — see `test-compat.mjs`. That covers tabstops and placeholders,
+same-index tabstop groups, regex triggers by option and by literal, flags,
+snippet variables in all three spellings, visual snippets as strings and as
+functions, function replacements (including returning `false` to decline), the
+`require("latex-suite")` node API with named capture groups, priority and
+trigger-length ordering, every option letter, `excludedEnvironments` /
+`excludedMacros` / `includedMacros`, the `.md`-wrapped snippet file format, and
+folders of snippet files.
+
+Where it deliberately differs:
+
+- **Tabstops that share a number** are all inserted, but only the first is
+  selected. Latex Suite puts a cursor in each; neither editor here has more than
+  one selection.
+- **The `U` option is inert.** Undo of an automatic expansion is one step: it
+  restores what you had before the trigger rather than the trigger itself.
+- **`language` and code-block modes are limited.** A Zotero code block carries no
+  language, so a snippet with `language: "python"` can never match; plain `c` and
+  `C` work.
+- **On an otherwise empty paragraph, `mk` gives display math** until you have
   clicked any equation once in that window. Cosmetic; see the `ponytail:` note in
   `src/editor/insert_math.ts`.
 
