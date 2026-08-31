@@ -576,35 +576,66 @@ async function startup({ id, rootURI: uri }) {
 	for (const window of Zotero.getMainWindows()) onMainWindowLoad({ window });
 }
 
+/* Shutdown runs during an upgrade, and every step of it touches something that
+ * can be in an awkward state — a window mid-close, a pane already unregistered.
+ * One throw must not stop the rest from being undone. */
+function safely(what, fn) {
+	try {
+		fn();
+	} catch (e) {
+		Zotero.debug("LaTeX Snippets: " + what + " failed during shutdown - " + e);
+	}
+}
+
 function shutdown() {
-	if (origRegisterEditorInstance) Zotero.Notes.registerEditorInstance = origRegisterEditorInstance;
+	safely("restoring registerEditorInstance", () => {
+		if (origRegisterEditorInstance) Zotero.Notes.registerEditorInstance = origRegisterEditorInstance;
+	});
 	origRegisterEditorInstance = null;
 
-	if (onReaderEvent && Zotero.Reader.unregisterEventListener) {
-		Zotero.Reader.unregisterEventListener("renderToolbar", onReaderEvent);
-	}
+	safely("unregistering the reader listener", () => {
+		if (onReaderEvent && Zotero.Reader.unregisterEventListener) {
+			Zotero.Reader.unregisterEventListener("renderToolbar", onReaderEvent);
+		}
+	});
 	onReaderEvent = null;
 
-	eachTarget((win) => {
-		const content = win.wrappedJSObject;
-		if (content.__latexSnippetsUninstall) content.__latexSnippetsUninstall();
+	safely("uninstalling from editors", () => {
+		eachTarget((win) => {
+			const content = win.wrappedJSObject;
+			if (content.__latexSnippetsUninstall) content.__latexSnippetsUninstall();
+		});
 	});
 
-	eachItemPane((handle, window) => {
-		handle.destroy();
-		itemPaneWindows.delete(window);
+	safely("tearing down item panes", () => {
+		eachItemPane((handle, window) => {
+			try {
+				handle.destroy();
+			} finally {
+				itemPaneWindows.delete(window);
+			}
+		});
 	});
 
-	if (pollTimer) clearInterval(pollTimer);
+	safely("stopping the file poll", () => {
+		if (pollTimer) clearInterval(pollTimer);
+	});
 	pollTimer = null;
 	fileSources.clear();
 
-	if (prefObserver) Zotero.Prefs.unregisterObserver(prefObserver);
+	safely("unregistering the pref observer", () => {
+		if (prefObserver) Zotero.Prefs.unregisterObserver(prefObserver);
+	});
 	prefObserver = null;
-	if (prefPane) Zotero.PreferencePanes.unregister(prefPane);
+	safely("unregistering the prefs pane", () => {
+		if (prefPane) Zotero.PreferencePanes.unregister(prefPane);
+	});
 	prefPane = null;
-	delete Zotero.LatexSnippets;
-	forgetOverrides();
+
+	safely("clearing globals", () => {
+		delete Zotero.LatexSnippets;
+		forgetOverrides();
+	});
 	contentScript = null;
 	katexScript = null;
 }
