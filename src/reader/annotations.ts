@@ -1,14 +1,27 @@
-/* Rendering equations in the reader's annotation comments.
+/* Live rendering of `$…$` in the reader's annotation comments.
  *
- * The comment field is a contenteditable that Zotero reads back as `innerText`
- * when you edit it, so the `$…$` has to be there whenever the field is focused.
- * Hence: put the source back synchronously on focus, and re-render a frame
- * later, once React's own blur handling has run and read the value it wanted.
+ * The constraint that shapes all of this: on every input the reader runs its
+ * own `clean()` over the live comment element and then reads the comment back
+ * out of it. Anything of ours still in the DOM at that moment would be saved
+ * into the annotation. So the rendering comes out synchronously on `input` in
+ * the capture phase — React attaches its handler at the root container, so ours
+ * runs first — and goes back in once typing pauses.
+ *
+ * While a comment is focused, the equation the caret is inside stays as source,
+ * so it can be edited; the rest of the comment renders around it. A rendered
+ * equation is `contenteditable=false`, so the caret cannot be placed inside one
+ * — clicking it has to put the source back and drop the caret in, or an
+ * equation would become uneditable the moment it rendered.
  */
 import { renderMath, unrenderMath } from "src/render/math";
+import { segmentsOf, selectionOffsets, setCaret, SOURCE_ATTR } from "src/render/segments";
+import { renderableEquations } from "src/utils/math_bounds";
+import { COMMENT_FIELD } from "src/editor/contenteditable";
 
-/** Comments only — the other field holds the passage quoted from the document. */
-const FIELD = ".annotation .comment .content";
+/** How long to wait after the last keystroke before rendering again. */
+const IDLE_MS = 250;
+
+const STATE_ATTR = "data-latex-snippets-render";
 
 export function installAnnotationRendering(win: any): () => void {
 	const doc: Document = win.document;
@@ -18,37 +31,100 @@ export function installAnnotationRendering(win: any): () => void {
 		return () => {};
 	}
 
-	const onFocusIn = (event: Event) => {
-		const field = (event.target as HTMLElement)?.closest?.(FIELD);
-		if (field) unrenderMath(field);
+	const fields = () => Array.from(doc.querySelectorAll(COMMENT_FIELD)) as HTMLElement[];
+	const fieldOf = (node: unknown) => (node as HTMLElement)?.closest?.(COMMENT_FIELD) as HTMLElement | null;
+	const isFocused = (field: HTMLElement) => field === doc.activeElement || field.contains(doc.activeElement);
+
+	function renderField(field: HTMLElement) {
+		const selection = isFocused(field) ? selectionOffsets(field) : null;
+		const caret = selection ? selection.to : null;
+
+		// Rendering mutates the DOM, which wakes the observer, which would render
+		// again: skip when the DOM already says what it should.
+		const { text } = segmentsOf(field);
+		const wanted = renderableEquations(text)
+			.filter((bounds) => caret == null || caret < bounds.outer_start || caret > bounds.outer_end)
+			.map((bounds) => `${bounds.outer_start}:${bounds.outer_end}`)
+			.join(",");
+		if (field.getAttribute(STATE_ATTR) === wanted) return;
+
+		renderMath(field, katex, caret);
+		field.setAttribute(STATE_ATTR, wanted);
+		if (selection) setCaret(field, selection.from, selection.to);
+	}
+
+	let timer = 0;
+	const schedule = (delay: number) => {
+		win.clearTimeout(timer);
+		timer = win.setTimeout(() => {
+			timer = 0;
+			for (const field of fields()) renderField(field);
+		}, delay);
 	};
 
-	let scheduled = 0;
-	const tick = () => {
-		scheduled = 0;
-		for (const field of Array.from(doc.querySelectorAll(FIELD))) {
-			if (field === doc.activeElement || field.contains(doc.activeElement)) continue;
-			renderMath(field, katex);
-		}
-	};
-	const schedule = () => {
-		if (!scheduled) scheduled = win.requestAnimationFrame(tick);
+	/* Capture phase, so this runs before React's onInput — which is attached at
+	 * the root container and would otherwise read our MathML back as the comment. */
+	const onInput = (event: Event) => {
+		const field = fieldOf(event.target);
+		if (!field) return;
+		const selection = selectionOffsets(field);
+		if (unrenderMath(field) && selection) setCaret(field, selection.from, selection.to);
+		field.removeAttribute(STATE_ATTR);
+		schedule(IDLE_MS);
 	};
 
-	doc.addEventListener("focusin", onFocusIn, true);
-	doc.addEventListener("focusout", schedule, true);
+	/* Click a rendered equation to edit it. Without this an equation becomes
+	 * read-only as soon as it renders: it is an atom, so the caret cannot enter
+	 * it, and no snippet can ever see math mode there again. */
+	const onMouseDown = (event: MouseEvent) => {
+		const span = (event.target as HTMLElement)?.closest?.(`[${SOURCE_ATTR}]`) as HTMLElement | null;
+		if (!span) return;
+		const field = fieldOf(span);
+		if (!field || !field.isContentEditable) return;
 
-	// React rewrites these fields whenever the annotation changes, wiping what we
+		const { segments } = segmentsOf(field);
+		const segment = segments.find((s) => s.node === span);
+		const source = span.getAttribute(SOURCE_ATTR) ?? "";
+		const delimiter = source.startsWith("$$") ? 2 : 1;
+
+		event.preventDefault();
+		field.focus();
+		unrenderMath(field);
+		field.removeAttribute(STATE_ATTR);
+		// Just inside the closing delimiter, which is where you want to be when
+		// you click an equation to change it.
+		setCaret(field, (segment?.start ?? 0) + source.length - delimiter);
+		schedule(IDLE_MS);
+	};
+
+	const onFocusChange = () => schedule(0);
+	const onSelectionChange = () => {
+		if (fieldOf(doc.activeElement)) schedule(IDLE_MS);
+	};
+
+	doc.addEventListener("input", onInput, true);
+	doc.addEventListener("mousedown", onMouseDown, true);
+	doc.addEventListener("focusin", onFocusChange, true);
+	doc.addEventListener("focusout", onFocusChange, true);
+	doc.addEventListener("selectionchange", onSelectionChange);
+
+	// React rewrites these fields whenever an annotation changes, wiping what we
 	// rendered; watching the document is simpler than tracking its lifecycles.
-	const observer = new win.MutationObserver(schedule);
+	const observer = new win.MutationObserver(() => schedule(IDLE_MS));
 	observer.observe(doc.body, { childList: true, subtree: true, characterData: true });
-	schedule();
+	schedule(0);
 
 	return () => {
 		observer.disconnect();
-		if (scheduled) win.cancelAnimationFrame(scheduled);
-		doc.removeEventListener("focusin", onFocusIn, true);
-		doc.removeEventListener("focusout", schedule, true);
-		for (const field of Array.from(doc.querySelectorAll(FIELD))) unrenderMath(field);
+		win.clearTimeout(timer);
+		doc.removeEventListener("input", onInput, true);
+		doc.removeEventListener("mousedown", onMouseDown, true);
+		doc.removeEventListener("focusin", onFocusChange, true);
+		doc.removeEventListener("focusout", onFocusChange, true);
+		doc.removeEventListener("selectionchange", onSelectionChange);
+		for (const field of fields()) {
+			unrenderMath(field);
+			field.removeAttribute(STATE_ATTR);
+		}
 	};
 }

@@ -11,31 +11,17 @@
  */
 import { Buffer, BufferKind, Range } from "./buffer";
 import { MathBounds, mathBoundsAt } from "src/utils/math_bounds";
+import { domPointAt, Segment, segmentsOf, selectionOffsets, setCaret } from "src/render/segments";
 
-/** The comment fields we act in. The `text` field holds the quoted passage. */
-const EDITABLE_SELECTOR = '.annotation .comment [contenteditable="true"]';
+/**
+ * The comment field, in both the sidebar and the in-page popup — those are two
+ * different React components with different wrappers, but the same editor
+ * inside. The neighbouring `text` field holds the passage quoted from the
+ * document and is deliberately left alone.
+ */
+export const COMMENT_FIELD = ".comment .content";
 
-type Segment = { start: number; length: number; node: Text | null; br: Element | null };
-
-function segmentsOf(root: Element): { segments: Segment[]; text: string } {
-	const segments: Segment[] = [];
-	let text = "";
-	const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-	let node: Node | null;
-	while ((node = walker.nextNode())) {
-		if (node.nodeType === 3) {
-			const value = (node as Text).data;
-			segments.push({ start: text.length, length: value.length, node: node as Text, br: null });
-			text += value;
-		} else if ((node as Element).nodeName === "BR") {
-			segments.push({ start: text.length, length: 1, node: null, br: node as Element });
-			text += "\n";
-		}
-	}
-	return { segments, text };
-}
-
-/** Text offsets are the reader's own convention — concatenated text nodes — plus one character per <br>. */
+/** Offsets describe the comment as Zotero stores it, rendered equations included. */
 export class TextBuffer implements Buffer {
 	readonly element: HTMLElement;
 	readonly text: string;
@@ -76,47 +62,14 @@ export class TextBuffer implements Buffer {
 	}
 
 	static forElement(element: HTMLElement): TextBuffer | null {
+		const selection = selectionOffsets(element);
+		if (!selection) return null;
 		const { segments, text } = segmentsOf(element);
-		const selection = element.ownerDocument.defaultView?.getSelection();
-		if (!selection || selection.rangeCount === 0) return null;
-
-		const range = selection.getRangeAt(0);
-		if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return null;
-
-		const offsetOf = (container: Node, offset: number) => {
-			const measure = element.ownerDocument.createRange();
-			measure.selectNodeContents(element);
-			measure.setEnd(container, offset);
-			// Range.toString() drops <br>, so add them back to stay in step with `text`.
-			const fragment = measure.cloneContents();
-			return measure.toString().length + fragment.querySelectorAll("br").length;
-		};
-
-		return new TextBuffer(element, text, segments, offsetOf(range.startContainer, range.startOffset), offsetOf(range.endContainer, range.endOffset));
-	}
-
-	private domPoint(offset: number): { node: Node; offset: number } {
-		for (const segment of this.segments) {
-			if (offset > segment.start + segment.length) continue;
-			if (segment.node) return { node: segment.node, offset: offset - segment.start };
-			const parent = segment.br!.parentNode!;
-			const index = Array.prototype.indexOf.call(parent.childNodes, segment.br);
-			return { node: parent, offset: offset === segment.start ? index : index + 1 };
-		}
-		return { node: this.element, offset: this.element.childNodes.length };
+		return new TextBuffer(element, text, segments, selection.from, selection.to);
 	}
 
 	private select(from: number, to: number) {
-		const doc = this.element.ownerDocument;
-		const selection = doc.defaultView?.getSelection();
-		if (!selection) return;
-		const start = this.domPoint(from);
-		const end = this.domPoint(to);
-		const range = doc.createRange();
-		range.setStart(start.node, start.offset);
-		range.setEnd(end.node, end.offset);
-		selection.removeAllRanges();
-		selection.addRange(range);
+		setCaret(this.element, from, to);
 	}
 
 	applyChange(
@@ -127,9 +80,7 @@ export class TextBuffer implements Buffer {
 		selection?: Range,
 	): Range[] {
 		this.select(from, to);
-		// execCommand rather than a DOM write: undo keeps working, and the
-		// reader's own `input` handler is what saves the comment.
-		this.element.ownerDocument.execCommand("insertText", false, insert);
+		this.insert(from, to, insert);
 
 		const at = (offsetInInsert: number) => from + offsetInInsert;
 		const placed = tabstops.map((ts) => ({ from: at(ts.from), to: at(ts.to) }));
@@ -140,14 +91,49 @@ export class TextBuffer implements Buffer {
 		return placed;
 	}
 
+	/**
+	 * execCommand rather than a DOM write: undo keeps working, and the reader's
+	 * own `input` handler is what saves the comment. That handler also strips
+	 * anything it does not recognise, so the rendering layer takes the equations
+	 * back out of the DOM before it runs.
+	 *
+	 * execCommand can decline, and does so silently, which would lose the
+	 * expansion with no sign of why — so check, and edit the DOM directly if it
+	 * did nothing, announcing the change ourselves.
+	 */
+	private insert(from: number, to: number, insert: string) {
+		const doc = this.element.ownerDocument;
+		const expected = this.text.slice(0, from) + insert + this.text.slice(to);
+
+		try {
+			if (doc.execCommand("insertText", false, insert) && segmentsOf(this.element).text === expected) return;
+		} catch {
+			/* fall through */
+		}
+		if (segmentsOf(this.element).text === expected) return;
+
+		const { segments } = segmentsOf(this.element);
+		const start = domPointAt(this.element, segments, from);
+		const end = domPointAt(this.element, segments, to);
+		const range = doc.createRange();
+		range.setStart(start.node, start.offset);
+		range.setEnd(end.node, end.offset);
+		range.deleteContents();
+		if (insert) range.insertNode(doc.createTextNode(insert));
+		this.element.normalize();
+
+		const view = doc.defaultView as any;
+		this.element.dispatchEvent(
+			new view.InputEvent("input", { bubbles: true, inputType: "insertText", data: insert }),
+		);
+	}
+
 	replaceRange(from: number, to: number, insert: string) {
 		this.applyChange(from, to, insert);
 	}
 
 	selectRange(range: Range) {
-		// The DOM has moved on since `range` was recorded, so re-walk it.
-		const fresh = TextBuffer.forElement(this.element);
-		(fresh ?? this).select(range.from, range.to);
+		this.select(range.from, range.to);
 	}
 
 	setSelection(from: number, to: number = from) {
@@ -211,8 +197,6 @@ function watchElement(element: HTMLElement, remap: (map: (range: Range) => Range
 /** The annotation comment the caret is in, or null. */
 export function currentTextBuffer(win: any): TextBuffer | null {
 	const active = win.document?.activeElement as HTMLElement | null;
-	if (!active || !active.isContentEditable) return null;
-	if (!active.closest(EDITABLE_SELECTOR.split(" ")[0]) || !active.matches('[contenteditable="true"]')) return null;
-	if (!active.closest(".comment")) return null;
+	if (!active || !active.isContentEditable || !active.matches(COMMENT_FIELD)) return null;
 	return TextBuffer.forElement(active);
 }

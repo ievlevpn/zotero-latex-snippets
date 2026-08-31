@@ -27,10 +27,32 @@ let automaticSnippets: Snippet[] = [];
 /* Last few keystrokes we acted on, for diagnosing misbehaviour in a real note:
  * read `window.__latexSnippets.recent` from the note editor. Cheap enough to
  * always keep. */
-type Trace = { key: string; before: string; from: number; to: number; after?: string; handled: boolean };
+type Trace = {
+	key: string;
+	/** which editor the keystroke landed in, or why none was found */
+	where: string;
+	before?: string;
+	from?: number;
+	to?: number;
+	after?: string;
+	handled: boolean;
+};
 const recent: Trace[] = [];
 let trace: Trace | null = null;
 const currentTrace = () => trace;
+
+function record(entry: Trace): Trace {
+	recent.push(entry);
+	if (recent.length > 20) recent.shift();
+	return entry;
+}
+
+function describeFocus(): string {
+	const active = window.document.activeElement;
+	if (!active) return "nothing focused";
+	const classes = active.className ? `.${String(active.className).trim().split(/\s+/).join(".")}` : "";
+	return `${active.nodeName.toLowerCase()}${classes}`;
+}
 
 function loadSettings(json: string | undefined) {
 	let raw: RawSettings = DEFAULT_SETTINGS;
@@ -85,15 +107,21 @@ function handleKeydown(event: KeyboardEvent): boolean {
 	const core = getEditorCore(window);
 	if (core?.view) rememberSelectionClass(core.view);
 
-	const buffer = currentBuffer(window);
-	if (!buffer) return false;
-	if (isReaderWindow(window) && !settings.annotationSnippetsEnabled) return false;
-
 	const key = keyNameFromEvent(event);
+	const where = isReaderWindow(window) ? "reader" : "note";
 
-	trace = { key, before: buffer.text, from: buffer.from, to: buffer.to, handled: false };
-	recent.push(trace);
-	if (recent.length > 20) recent.shift();
+	const buffer = currentBuffer(window);
+	if (!buffer) {
+		// Worth recording: "no buffer here" is the usual reason a key does nothing.
+		record({ key, where: `${where}: no editable buffer at ${describeFocus()}`, handled: false });
+		return false;
+	}
+	if (isReaderWindow(window) && !settings.annotationSnippetsEnabled) {
+		record({ key, where: "reader: snippets in annotations are switched off", handled: false });
+		return false;
+	}
+
+	trace = record({ key, where: `${where}/${buffer.kind}`, before: buffer.text, from: buffer.from, to: buffer.to, handled: false });
 
 	// 1. Automatic snippets, on any plain printable key.
 	if (settings.snippetsEnabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
