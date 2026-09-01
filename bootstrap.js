@@ -1,4 +1,4 @@
-/* LaTeX Snippets — a Zotero plugin (bootstrapped, Zotero 7+).
+/* LaTeX Suite — a Zotero plugin (bootstrapped, Zotero 7+).
  *
  * A port of the snippets half of obsidian-latex-suite to Zotero's note editor.
  * This file is the chrome side and does three small things:
@@ -15,7 +15,7 @@
  * See notes/zotero-note-editor.md for how the note editor is put together.
  */
 
-const PREF = "extensions.zotero.latexSnippets.settings";
+const PREF = "extensions.zotero.latexSuite.settings";
 
 /* Scalar defaults, mirrored from src/settings/settings.ts, which is the source
  * of truth — the content script merges the stored overrides over its own copy.
@@ -145,7 +145,7 @@ function readOverrides() {
 			overridesJSON = "{}"; // the string is handed straight to the engine
 		}
 	} catch (e) {
-		Zotero.debug("LaTeX Snippets: unreadable settings pref - " + e);
+		Zotero.debug("LaTeX Suite: unreadable settings pref - " + e);
 		overridesCache = {};
 		overridesJSON = "{}";
 	}
@@ -218,7 +218,7 @@ async function refreshFileSources() {
 			// the user's snippets because a vault happens to be offline.
 			if (previous && previous.error) continue;
 			fileSources.set(source.key, { path, text: previous?.text ?? null, stamp: null, error: String(e) });
-			Zotero.debug("LaTeX Snippets: cannot read " + path + " - " + e);
+			Zotero.debug("LaTeX Suite: cannot read " + path + " - " + e);
 			changed = true;
 			continue;
 		}
@@ -231,7 +231,7 @@ async function refreshFileSources() {
 			changed = true;
 		} catch (e) {
 			fileSources.set(source.key, { path, text: previous?.text ?? null, stamp: null, error: String(e) });
-			Zotero.debug("LaTeX Snippets: cannot read " + path + " - " + e);
+			Zotero.debug("LaTeX Suite: cannot read " + path + " - " + e);
 			changed = true;
 		}
 	}
@@ -256,7 +256,7 @@ function syncFilePolling() {
 		try {
 			if (await refreshFileSources()) pushSettings();
 		} catch (e) {
-			Zotero.debug("LaTeX Snippets: " + e);
+			Zotero.debug("LaTeX Suite: " + e);
 		}
 	}, 3000);
 }
@@ -305,10 +305,10 @@ function inject(win, { withKatex } = {}) {
 	if (!doc || !doc.documentElement) return;
 
 	const content = win.wrappedJSObject;
-	content.__latexSnippetsSettings = settingsJSON();
+	content.__latexSuiteSettings = settingsJSON();
 
-	if (content.__latexSnippetsInstalled) {
-		if (content.__latexSnippetsReload) content.__latexSnippetsReload(settingsJSON());
+	if (content.__latexSuiteInstalled) {
+		if (content.__latexSuiteReload) content.__latexSuiteReload(settingsJSON());
 		return;
 	}
 
@@ -324,7 +324,7 @@ async function ensureKatexScript() {
 	try {
 		katexScript = await Zotero.File.getResourceAsync(rootURI + "vendor/katex.min.js");
 	} catch (e) {
-		Zotero.debug("LaTeX Snippets: could not read KaTeX - " + e);
+		Zotero.debug("LaTeX Suite: could not read KaTeX - " + e);
 	}
 	return katexScript;
 }
@@ -368,7 +368,7 @@ function eachTarget(fn) {
 		try {
 			if (win) fn(win);
 		} catch (e) {
-			Zotero.debug("LaTeX Snippets: " + e);
+			Zotero.debug("LaTeX Suite: " + e);
 		}
 	}
 }
@@ -378,7 +378,7 @@ function pushSettings() {
 	const json = settingsJSON();
 	eachTarget((win) => {
 		const content = win.wrappedJSObject;
-		if (content.__latexSnippetsReload) content.__latexSnippetsReload(json);
+		if (content.__latexSuiteReload) content.__latexSuiteReload(json);
 	});
 	eachItemPane((handle) => handle.refresh());
 }
@@ -393,7 +393,7 @@ async function onSettingsChanged() {
 		try {
 			if (reader?._iframeWindow) ensureKatex(reader._iframeWindow);
 		} catch (e) {
-			Zotero.debug("LaTeX Snippets: " + e);
+			Zotero.debug("LaTeX Suite: " + e);
 		}
 	}
 
@@ -433,9 +433,9 @@ function installItemPaneRendering(window) {
 		try {
 			Services.scriptloader.loadSubScript(rootURI + "vendor/katex.min.js", window);
 			Services.scriptloader.loadSubScript(rootURI + "build/render.js", window);
-			loaded = !!(window.LatexSnippetsRender && window.katex);
+			loaded = !!(window.LatexSuiteRender && window.katex);
 		} catch (e) {
-			Zotero.debug("LaTeX Snippets: renderer failed to load in the item pane - " + e);
+			Zotero.debug("LaTeX Suite: renderer failed to load in the item pane - " + e);
 			loaded = false;
 		}
 		return loaded;
@@ -451,11 +451,11 @@ function installItemPaneRendering(window) {
 			if (!load()) return;
 			// syncRender, not renderMath: it does nothing when the DOM already
 			// matches, which is what keeps this off the observer's treadmill.
-			for (const el of rows) window.LatexSnippetsRender.syncRender(el, window.katex);
+			for (const el of rows) window.LatexSuiteRender.syncRender(el, window.katex);
 		} else if (loaded) {
 			for (const el of rows) {
-				window.LatexSnippetsRender.unrenderMath(el);
-				window.LatexSnippetsRender.clearRenderState(el);
+				window.LatexSuiteRender.unrenderMath(el);
+				window.LatexSuiteRender.clearRenderState(el);
 			}
 		}
 	};
@@ -474,8 +474,8 @@ function installItemPaneRendering(window) {
 			if (scheduled) window.cancelAnimationFrame(scheduled);
 			if (!loaded) return;
 			for (const el of doc.querySelectorAll(ROW_SELECTOR)) {
-				window.LatexSnippetsRender.unrenderMath(el);
-				window.LatexSnippetsRender.clearRenderState(el);
+				window.LatexSuiteRender.unrenderMath(el);
+				window.LatexSuiteRender.clearRenderState(el);
 			}
 		},
 	};
@@ -487,7 +487,7 @@ function onMainWindowLoad({ window }) {
 		const handle = installItemPaneRendering(window);
 		if (handle) itemPaneWindows.set(window, handle);
 	} catch (e) {
-		Zotero.debug("LaTeX Snippets: item pane rendering failed - " + e);
+		Zotero.debug("LaTeX Suite: item pane rendering failed - " + e);
 	}
 }
 
@@ -512,7 +512,7 @@ async function startup({ id, rootURI: uri }) {
 	} catch (e) {
 		// Without these there is nothing to inject; say so rather than failing
 		// silently and leaving no settings pane either.
-		Zotero.logError(new Error("LaTeX Snippets: could not read its own files - " + e));
+		Zotero.logError(new Error("LaTeX Suite: could not read its own files - " + e));
 		return;
 	}
 	await ensureKatexScript();
@@ -521,7 +521,7 @@ async function startup({ id, rootURI: uri }) {
 	await refreshFileSources();
 
 	// The prefs pane reads these instead of duplicating them.
-	Zotero.LatexSnippets = {
+	Zotero.LatexSuite = {
 		PREF,
 		FIELDS,
 		defaultSnippets,
@@ -540,10 +540,10 @@ async function startup({ id, rootURI: uri }) {
 		src: rootURI + "prefs.xhtml",
 		scripts: [rootURI + "prefs.js"],
 		stylesheets: [rootURI + "prefs.css"],
-		label: "LaTeX Snippets",
+		label: "LaTeX Suite",
 	}).then(
 		(paneID) => { prefPane = paneID; },
-		(e) => Zotero.debug("LaTeX Snippets: prefs pane failed to register - " + e),
+		(e) => Zotero.debug("LaTeX Suite: prefs pane failed to register - " + e),
 	);
 
 	prefObserver = Zotero.Prefs.registerObserver(PREF, onSettingsChanged, true);
@@ -555,7 +555,7 @@ async function startup({ id, rootURI: uri }) {
 	Zotero.Notes.registerEditorInstance = function (instance) {
 		const result = origRegisterEditorInstance.apply(this, arguments);
 		Zotero.Promise.delay(0).then(() => {
-			try { attach(instance); } catch (e) { Zotero.debug("LaTeX Snippets: " + e); }
+			try { attach(instance); } catch (e) { Zotero.debug("LaTeX Suite: " + e); }
 		});
 		return result;
 	};
@@ -563,15 +563,15 @@ async function startup({ id, rootURI: uri }) {
 	// Readers, as they open. renderToolbar fires once per reader; the sweep below
 	// catches the ones that were already open when the plugin loaded.
 	onReaderEvent = (event) => {
-		try { attachReader(event.reader); } catch (e) { Zotero.debug("LaTeX Snippets: " + e); }
+		try { attachReader(event.reader); } catch (e) { Zotero.debug("LaTeX Suite: " + e); }
 	};
 	Zotero.Reader.registerEventListener("renderToolbar", onReaderEvent, id);
 
 	for (const instance of Zotero.Notes._editorInstances || []) {
-		try { attach(instance); } catch (e) { Zotero.debug("LaTeX Snippets: " + e); }
+		try { attach(instance); } catch (e) { Zotero.debug("LaTeX Suite: " + e); }
 	}
 	for (const reader of Zotero.Reader._readers || []) {
-		try { attachReader(reader); } catch (e) { Zotero.debug("LaTeX Snippets: " + e); }
+		try { attachReader(reader); } catch (e) { Zotero.debug("LaTeX Suite: " + e); }
 	}
 	for (const window of Zotero.getMainWindows()) onMainWindowLoad({ window });
 }
@@ -583,7 +583,7 @@ function safely(what, fn) {
 	try {
 		fn();
 	} catch (e) {
-		Zotero.debug("LaTeX Snippets: " + what + " failed during shutdown - " + e);
+		Zotero.debug("LaTeX Suite: " + what + " failed during shutdown - " + e);
 	}
 }
 
@@ -603,7 +603,7 @@ function shutdown() {
 	safely("uninstalling from editors", () => {
 		eachTarget((win) => {
 			const content = win.wrappedJSObject;
-			if (content.__latexSnippetsUninstall) content.__latexSnippetsUninstall();
+			if (content.__latexSuiteUninstall) content.__latexSuiteUninstall();
 		});
 	});
 
@@ -633,7 +633,7 @@ function shutdown() {
 	prefPane = null;
 
 	safely("clearing globals", () => {
-		delete Zotero.LatexSnippets;
+		delete Zotero.LatexSuite;
 		forgetOverrides();
 	});
 	contentScript = null;

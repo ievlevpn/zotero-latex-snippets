@@ -1,4 +1,4 @@
-/* Preferences pane for LaTeX Snippets. Registered from bootstrap.js; runs in the
+/* Preferences pane for LaTeX Suite. Registered from bootstrap.js; runs in the
  * Zotero settings window.
  *
  * Zotero loads pane scripts BEFORE inserting the pane markup (see
@@ -14,7 +14,7 @@
 	const XHTML = "http://www.w3.org/1999/xhtml";
 
 	function init(fieldsEl) {
-		const { PREF, FIELDS, defaultSnippets, defaultSnippetVariables } = Zotero.LatexSnippets;
+		const { PREF, FIELDS, defaultSnippets, defaultSnippetVariables } = Zotero.LatexSuite;
 		const h = (tag) => document.createElementNS(XHTML, tag);
 
 		async function pick(input, folder) {
@@ -155,9 +155,9 @@
 					continue;
 				}
 				const key = sourceKeyFor(field.key);
-				const loaded = Zotero.LatexSnippets.fileStatus(key);
+				const loaded = Zotero.LatexSuite.fileStatus(key);
 				try {
-					const { sources, files } = await Zotero.LatexSnippets.readSourceAt(path);
+					const { sources, files } = await Zotero.LatexSuite.readSourceAt(path);
 					const check = checkModule(key === "snippets" ? "snippets" : "variables");
 					// Report the whole folder, not just whichever file failed first.
 					const counts = sources.map((source, i) => {
@@ -287,11 +287,11 @@
 
 	const start = () => {
 		const fieldsEl = document.getElementById("ls-fields");
-		if (!fieldsEl || !Zotero.LatexSnippets) return false;
+		if (!fieldsEl || !Zotero.LatexSuite) return false;
 		try {
 			init(fieldsEl);
 		} catch (e) {
-			Zotero.debug("LaTeX Snippets: prefs pane failed - " + ((e && e.stack) || e));
+			Zotero.debug("LaTeX Suite: prefs pane failed - " + ((e && e.stack) || e));
 		}
 		return true;
 	};

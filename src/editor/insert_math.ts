@@ -112,7 +112,7 @@ export function expandAsMath(win: any, buffer: Buffer, from: number, to: number,
 
 	const active = getActiveMathView(win.document);
 	if (!active) {
-		console.error("latex-snippets: could not open the equation that was just created");
+		console.error("latex-suite: could not open the equation that was just created");
 		return true;
 	}
 	rememberSelectionClass(active.view);

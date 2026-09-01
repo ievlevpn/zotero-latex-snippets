@@ -7,7 +7,7 @@
  * happy property of never touching the document: nothing to strip before Zotero
  * reads a comment back, and nothing to undo.
  */
-const LAYER_ID = "latex-snippets-tabstops";
+const LAYER_ID = "latex-suite-tabstops";
 
 const STYLE = `
 #${LAYER_ID} { position: fixed; inset: 0; pointer-events: none; z-index: 2147483000; }

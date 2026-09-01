@@ -1,9 +1,14 @@
-# LaTeX Snippets for Zotero
+# LaTeX Suite for Zotero
 
-Type LaTeX in Zotero notes as fast as you can write it. This is a port of the
-snippets half of [Obsidian Latex Suite](https://github.com/artisticat1/obsidian-latex-suite)
-to Zotero's note editor, using **the same snippet format** — you can paste your
-existing `latex-suite-snippets.js` straight in.
+**Write LaTeX in your PDF annotations and see it rendered as you type.** Zotero
+renders equations in notes but not in annotation comments, where most reading
+notes actually get written — so a comment reading `the bound $\|x\|_2 \leq 1$
+holds` stays as raw source. This plugin renders it, live, in the reader sidebar,
+the in-page popups, and the item pane.
+
+It also brings the snippets from
+[Obsidian Latex Suite](https://github.com/artisticat1/obsidian-latex-suite) to
+both annotations and notes, so the LaTeX is quick to type in the first place:
 
 ```
 mk          →  inline equation
@@ -14,32 +19,24 @@ sqx         →  \sqrt{x}
 dint Tab 2pi Tab sin @t Tab @t Tab  →  \int_{0}^{2\pi} \sin \theta \, d\theta
 ```
 
-Ships with Latex Suite's [default snippets](src/default_snippets.js) — 220-odd
-of them. Edit, remove, or add your own in **Settings → LaTeX Snippets**.
-
-### Sharing snippets with Obsidian
-
-If you already use obsidian-latex-suite, point this at the same file:
-**Settings → LaTeX Snippets → Snippet files → Load snippets from a file**, then
-browse to it. The format is identical, so a vault's `latex_suite_snippets.js`
-works unchanged — including regex triggers, `${VARIABLE}` substitution, visual
-snippets and function replacements.
-
-The file is re-read whenever it changes on disk, so editing snippets in your own
-editor shows up in Zotero without touching its settings. If the file goes away —
-a vault on a drive that is not mounted, say — the last version that loaded stays
-in use rather than leaving you with no snippets. Snippet variables can come from
-a file the same way; Obsidian keeps those in the plugin's `data.json` rather than
-a file of their own, so paste them into the settings box instead.
+The snippet format is unchanged from upstream, so if you already use
+obsidian-latex-suite you can point this at the very same file and get the same
+shortcuts in both — see [Sharing snippets with Obsidian](#sharing-snippets-with-obsidian).
+It ships with Latex Suite's [default snippets](src/default_snippets.js) — 220-odd
+of them — which you can edit, remove or replace in **Settings → LaTeX Suite**.
 
 ## Install
 
-Download `latex-snippets.xpi` from the
-[latest release](https://github.com/ievlevpn/zotero-latex-snippets/releases/latest)
+Download `latex-suite.xpi` from the
+[latest release](https://github.com/ievlevpn/zotero-latex-suite/releases/latest)
 → Zotero → Tools → Plugins → ⚙ → Install Plugin From File… Updates are automatic.
 
 ## Features
 
+- **Live rendering in annotations** — `$…$` and `$$…$$` in a comment are drawn
+  as you write, everywhere annotations appear. The equation the cursor is inside
+  stays as source so you can keep editing it; click a rendered one to get back
+  into it.
 - **Snippets** — triggers, tabstops with placeholders, regex triggers, visual
   (selection-wrapping) snippets, function replacements, snippet variables,
   priorities. The format and every option letter are unchanged, so
@@ -159,18 +156,21 @@ node test.js      # engine self-check, outside Zotero
 ```
 
 To run it from a checkout, point Zotero at the folder: create a file named
-`latex-snippets@local` in `<profile>/extensions/` containing the absolute path
+`latex-suite@ievlevpn.github.io` in `<profile>/extensions/` containing the absolute path
 to this directory, then restart Zotero.
 
 `./release.sh` builds, tests, tags and publishes.
 
 ## Credits and license
 
-The snippet engine, the snippet format, and the default snippets are
+The snippet engine, the snippet format, and the default snippets are ported from
 [artisticat1/obsidian-latex-suite](https://github.com/artisticat1/obsidian-latex-suite)
 by artisticat1, which in turn follows
-[Gilles Castel's UltiSnips setup](https://castel.dev/post/lecture-notes-1/).
-This is an unaffiliated port; please don't take Latex Suite's bug reports there
-for anything that only happens here.
+[Gilles Castel's UltiSnips setup](https://castel.dev/post/lecture-notes-1/). The
+annotation rendering, and everything that makes any of it work against Zotero's
+editors, is this project's.
+
+Unaffiliated with obsidian-latex-suite and not endorsed by it. Please don't take
+bug reports there for anything that only happens here.
 
 MIT, for both the original and this port — see [LICENSE](LICENSE).

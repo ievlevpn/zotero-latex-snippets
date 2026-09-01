@@ -99,7 +99,7 @@ function runSnippetCursor(
 		}
 
 		if (settings.snippetDebug !== "off") {
-			console.debug("latex-snippets: expanding", snippet.description, "->", replacement.insert);
+			console.debug("latex-suite: expanding", snippet.description, "->", replacement.insert);
 		}
 
 		const containsTrigger = settings.autoEnlargeBracketsTriggers.some((word) => replacement.insert.includes(word));

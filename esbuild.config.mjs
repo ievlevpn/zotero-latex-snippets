@@ -39,7 +39,7 @@ const opts = {
 const renderOpts = {
 	...opts,
 	entryPoints: ["src/render_entry.ts"],
-	globalName: "LatexSnippetsRender",
+	globalName: "LatexSuiteRender",
 	outfile: "build/render.js",
 };
 

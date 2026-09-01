@@ -319,8 +319,8 @@ export class PMBuffer implements Buffer {
 	 */
 	watch(remap: (map: (range: Range) => Range) => void) {
 		const view = this.view;
-		if (view.__latexSnippetsWatched) return;
-		view.__latexSnippetsWatched = true;
+		if (view.__latexSuiteWatched) return;
+		view.__latexSuiteWatched = true;
 		const original = view.dispatch.bind(view);
 		view.dispatch = (tr: any) => {
 			// -1 / 1 so text typed inside a placeholder extends it

@@ -19,7 +19,7 @@ import { installAnnotationRendering } from "./reader/annotations";
 
 declare const window: any;
 
-const FLAG = "__latexSnippetsInstalled";
+const FLAG = "__latexSuiteInstalled";
 
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Dead"]);
 
@@ -27,7 +27,7 @@ let settings: Settings | null = null;
 let automaticSnippets: Snippet[] = [];
 
 /* Last few keystrokes we acted on, for diagnosing misbehaviour in a real note:
- * read `window.__latexSnippets.recent` from the note editor. Cheap enough to
+ * read `window.__latexSuite.recent` from the note editor. Cheap enough to
  * always keep. */
 type Trace = {
 	key: string;
@@ -74,13 +74,13 @@ function loadSettings(json: string | undefined) {
 	try {
 		if (json) raw = { ...DEFAULT_SETTINGS, ...JSON.parse(json) };
 	} catch (e) {
-		console.error("latex-snippets: unreadable settings, using defaults -", e);
+		console.error("latex-suite: unreadable settings, using defaults -", e);
 	}
 
 	try {
 		settings = processSettings(raw);
 	} catch (e) {
-		console.error("latex-snippets: could not parse snippets -", e);
+		console.error("latex-suite: could not parse snippets -", e);
 		// Fall back to the defaults rather than leaving the editor with none.
 		try {
 			settings = processSettings(DEFAULT_SETTINGS);
@@ -211,12 +211,12 @@ function handleKeydown(event: KeyboardEvent): boolean {
 function install() {
 	if (window[FLAG]) {
 		// Re-injected (settings changed): just take the new ones.
-		loadSettings(window.__latexSnippetsSettings);
+		loadSettings(window.__latexSuiteSettings);
 		return;
 	}
 	window[FLAG] = true;
 
-	loadSettings(window.__latexSnippetsSettings);
+	loadSettings(window.__latexSuiteSettings);
 
 	// Set when we handled a printable key, so the insertion it would otherwise
 	// have caused can be cancelled again at `beforeinput`. Belt and braces:
@@ -247,7 +247,7 @@ function install() {
 			}
 		} catch (e) {
 			undoRecovery?.();
-			console.error("latex-snippets:", e);
+			console.error("latex-suite:", e);
 			clearTabstops();
 		}
 	};
@@ -270,7 +270,7 @@ function install() {
 	const stopTracking = isReaderWindow(window) ? trackCommentSelection(window) : null;
 
 	// Called from bootstrap.js when the plugin is disabled or updated.
-	window.__latexSnippetsUninstall = () => {
+	window.__latexSuiteUninstall = () => {
 		stopTracking?.();
 		window.document.removeEventListener("keydown", onKeydown, true);
 		window.document.removeEventListener("beforeinput", onBeforeInput, true);
@@ -279,16 +279,16 @@ function install() {
 		stopRendering = null;
 		settings = null;
 		delete window[FLAG];
-		delete window.__latexSnippetsReload;
-		delete window.__latexSnippetsUninstall;
-		delete window.__latexSnippets;
+		delete window.__latexSuiteReload;
+		delete window.__latexSuiteUninstall;
+		delete window.__latexSuite;
 	};
 
 	// Let the chrome side push new settings without reloading the note.
-	window.__latexSnippetsReload = (json: string) => loadSettings(json);
+	window.__latexSuiteReload = (json: string) => loadSettings(json);
 
 	// Handy from the note editor's console.
-	window.__latexSnippets = {
+	window.__latexSuite = {
 		get settings() { return settings; },
 		get recent() { return recent; },
 		context: () => {

@@ -22,7 +22,7 @@ function convertOutputToNode(rawReplacement: unknown): ArrayNode | null {
 	if (Array.isArray(rawReplacement) && rawReplacement.every((n) => n instanceof BaseNode)) {
 		return new ArrayNode(rawReplacement);
 	}
-	console.error("latex-snippets: invalid replacement output:", rawReplacement);
+	console.error("latex-suite: invalid replacement output:", rawReplacement);
 	return null;
 }
 

@@ -57,7 +57,7 @@ export function run() {
 	{
 		const { el } = field("abc $x$ def");
 		assert.strictEqual(ls.renderMath(el, katex), true);
-		assert.strictEqual(el.querySelectorAll("[data-latex-snippets-source]").length, 1);
+		assert.strictEqual(el.querySelectorAll("[data-latex-suite-source]").length, 1);
 		assert.strictEqual(el.textContent, "abc «x» def", "the equation shows rendered");
 
 		assert.strictEqual(ls.unrenderMath(el), true);
@@ -69,7 +69,7 @@ export function run() {
 		const { el } = field("say $a<b>x</b>b$ ok");
 		assert.strictEqual(ls.segmentsOf(el).text, "say $axb$ ok");
 		ls.renderMath(el, katex);
-		assert.strictEqual(el.querySelectorAll("[data-latex-snippets-source]").length, 1, "it renders");
+		assert.strictEqual(el.querySelectorAll("[data-latex-suite-source]").length, 1, "it renders");
 
 		ls.unrenderMath(el);
 		assert.strictEqual(el.innerHTML, "say $a<b>x</b>b$ ok", "the <b> survives the round trip");
@@ -101,7 +101,7 @@ export function run() {
 		const rendered = (caret) => {
 			const { el } = field(text);
 			ls.renderMath(el, katex, caret);
-			return el.querySelectorAll("[data-latex-snippets-source]").length;
+			return el.querySelectorAll("[data-latex-suite-source]").length;
 		};
 		assert.strictEqual(rendered(2), 1, "caret well before: renders");
 		assert.strictEqual(rendered(9), 1, "caret well after: renders");

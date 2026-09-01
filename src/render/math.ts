@@ -13,10 +13,10 @@
 import { MathBounds, renderableEquations } from "src/utils/math_bounds";
 import { domPointAt, segmentsOf, SOURCE_ATTR } from "./segments";
 
-export const MATH_CLASS = "latex-snippets-math";
+export const MATH_CLASS = "latex-suite-math";
 
 /** What `syncRender` last left in this element, so it can tell when to do nothing. */
-const STATE_ATTR = "data-latex-snippets-render";
+const STATE_ATTR = "data-latex-suite-render";
 
 type Katex = { render(tex: string, element: Element, options: object): void };
 

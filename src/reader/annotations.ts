@@ -86,7 +86,7 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 		try {
 			selection = selectionOffsets(field);
 		} catch (e) {
-			console.error("latex-snippets:", e);
+			console.error("latex-suite:", e);
 		}
 
 		const removed = unrenderMath(field);
@@ -98,7 +98,7 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 			try {
 				setCaret(field, selection.from, selection.to);
 			} catch (e) {
-				console.error("latex-snippets:", e);
+				console.error("latex-suite:", e);
 			}
 		}
 	}
@@ -145,7 +145,7 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 		try {
 			renderField(field);
 		} catch (e) {
-			console.error("latex-snippets:", e);
+			console.error("latex-suite:", e);
 		}
 	};
 

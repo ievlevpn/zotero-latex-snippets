@@ -5,8 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-REPO="ievlevpn/zotero-latex-snippets"
-XPI="latex-snippets.xpi"
+REPO="ievlevpn/zotero-latex-suite"
+XPI="latex-suite.xpi"
 VER=$(node -p "require('./manifest.json').version")
 
 npm run build
@@ -25,7 +25,7 @@ const z = m.applications.zotero;
 const repo = process.env.REPO;
 const out = { addons: { [z.id]: { updates: [{
   version: m.version,
-  update_link: `https://github.com/${repo}/releases/download/v${m.version}/latex-snippets.xpi`,
+  update_link: `https://github.com/${repo}/releases/download/v${m.version}/latex-suite.xpi`,
   applications: { zotero: {
     strict_min_version: z.strict_min_version,
     ...(z.strict_max_version ? { strict_max_version: z.strict_max_version } : {}),
@@ -49,7 +49,7 @@ NOTES="## What's changed
 $CHANGES
 
 ---
-Install: download \`latex-snippets.xpi\` below → Zotero → Tools → Plugins → ⚙ → Install Plugin From File…
+Install: download \`latex-suite.xpi\` below → Zotero → Tools → Plugins → ⚙ → Install Plugin From File…
 Existing installs update automatically."
 
 gh release create "v$VER" "$XPI" -t "v$VER" -n "$NOTES"

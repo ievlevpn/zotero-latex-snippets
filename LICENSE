@@ -1,5 +1,5 @@
-This plugin is a port of the snippets engine of obsidian-latex-suite. Some files
-are copied verbatim from it (src/default_snippets.js,
+This plugin ports the snippets engine of obsidian-latex-suite. Some files are
+copied verbatim from it (src/default_snippets.js,
 src/default_snippet_variables.js, src/snippets/sort.ts, src/snippets/options.ts)
 and many more are close ports; see the header comment on each file. Both the
 original and this port are under the MIT license, reproduced once below for both

@@ -222,29 +222,29 @@ const { FIELDS } = require("./bootstrap.js");
 	};
 	new Function("window", "navigator", "console", bundle)(win, { userAgent: "Mac" }, console);
 	assert.deepStrictEqual(events, ["+keydown", "+beforeinput"]);
-	assert.strictEqual(win.__latexSnippetsInstalled, true);
-	assert.ok(win.__latexSnippets.settings.snippets.length > 200);
+	assert.strictEqual(win.__latexSuiteInstalled, true);
+	assert.ok(win.__latexSuite.settings.snippets.length > 200);
 
 	const oneSnippet = JSON.stringify({ snippets: `export default [{trigger: "zz", replacement: "ZZ", options: "mA"}]` });
-	win.__latexSnippetsReload(oneSnippet);
-	assert.deepStrictEqual(win.__latexSnippets.settings.snippets.map((s) => s.trigger), ["zz"]);
+	win.__latexSuiteReload(oneSnippet);
+	assert.deepStrictEqual(win.__latexSuite.settings.snippets.map((s) => s.trigger), ["zz"]);
 
 	// Re-attaching a window pushes the same settings again; parsing every snippet
 	// a second time for an identical payload is pure waste.
-	const parsed = win.__latexSnippets.settings;
-	win.__latexSnippetsReload(oneSnippet);
-	assert.strictEqual(win.__latexSnippets.settings, parsed, "identical settings should not be re-parsed");
+	const parsed = win.__latexSuite.settings;
+	win.__latexSuiteReload(oneSnippet);
+	assert.strictEqual(win.__latexSuite.settings, parsed, "identical settings should not be re-parsed");
 
 	// Broken snippets fall back to the defaults rather than leaving no engine.
 	const realError = console.error;
 	console.error = () => {}; // the fallback logs the syntax error, as it should
-	win.__latexSnippetsReload(JSON.stringify({ snippets: "export default not valid js {{{" }));
+	win.__latexSuiteReload(JSON.stringify({ snippets: "export default not valid js {{{" }));
 	console.error = realError;
-	assert.ok(win.__latexSnippets.settings.snippets.length > 200);
+	assert.ok(win.__latexSuite.settings.snippets.length > 200);
 
-	win.__latexSnippetsUninstall();
+	win.__latexSuiteUninstall();
 	assert.deepStrictEqual(events, ["+keydown", "+beforeinput", "-keydown", "-beforeinput"]);
-	assert.strictEqual(win.__latexSnippetsInstalled, undefined);
+	assert.strictEqual(win.__latexSuiteInstalled, undefined);
 
 	const editor = await import("./test-editor.mjs");
 	editor.run();

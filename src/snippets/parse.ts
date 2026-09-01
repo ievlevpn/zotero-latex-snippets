@@ -27,7 +27,7 @@ function evaluateModule(source: string, identifier: string, requireFn: (m: strin
 		? source.replace(/(^|[\s;}])export\s+default\s/, "$1return ")
 		: `return (\n${source}\n);`;
 	// eslint-disable-next-line no-new-func -- snippet files are user-authored code, by design
-	const fn = new Function("require", `${body}\n//# sourceURL=latex-snippets:${identifier}`);
+	const fn = new Function("require", `${body}\n//# sourceURL=latex-suite:${identifier}`);
 	return fn(requireFn);
 }
 

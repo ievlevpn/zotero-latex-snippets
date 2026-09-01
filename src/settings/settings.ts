@@ -138,7 +138,7 @@ function parseExcludedEnvs(envsStr: string): Environment[] {
 			return { openSymbol, closeSymbol };
 		});
 	} catch (e) {
-		console.error("latex-snippets: bad autofractionExcludedEnvs -", e);
+		console.error("latex-suite: bad autofractionExcludedEnvs -", e);
 		return [];
 	}
 }

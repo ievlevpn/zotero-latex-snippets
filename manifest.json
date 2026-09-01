@@ -1,8 +1,8 @@
 {
 	"manifest_version": 2,
-	"name": "LaTeX Snippets",
-	"version": "0.4.2",
-	"description": "Snippets for typing LaTeX in Zotero notes — a port of Obsidian Latex Suite's snippet engine, with the same snippet format.",
+	"name": "LaTeX Suite",
+	"version": "0.5.0",
+	"description": "Renders LaTeX in PDF annotation comments as you write, and adds Obsidian Latex Suite's snippets to Zotero's notes and annotations.",
 	"author": "Pavel Ievlev",
 	"icons": {
 		"48": "icon.svg",
@@ -10,8 +10,8 @@
 	},
 	"applications": {
 		"zotero": {
-			"id": "latex-snippets@local",
-			"update_url": "https://raw.githubusercontent.com/ievlevpn/zotero-latex-snippets/master/update.json",
+			"id": "latex-suite@ievlevpn.github.io",
+			"update_url": "https://raw.githubusercontent.com/ievlevpn/zotero-latex-suite/master/update.json",
 			"strict_min_version": "6.999",
 			"strict_max_version": "*"
 		}

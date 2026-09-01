@@ -6,7 +6,7 @@
  * `$…$`. A rendered equation counts as its *source* length, so the offsets here
  * always describe the comment as Zotero stores it, rendered or not.
  */
-export const SOURCE_ATTR = "data-latex-snippets-source";
+export const SOURCE_ATTR = "data-latex-suite-source";
 
 export type Segment = {
 	kind: "text" | "br" | "math";
