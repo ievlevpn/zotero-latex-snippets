@@ -230,9 +230,78 @@ function watchElement(element: HTMLElement, remap: (map: (range: Range) => Range
 	});
 }
 
-/** The annotation comment the caret is in, or null. */
+/* Where the caret was in each comment field.
+ *
+ * Zotero's reader takes Tab for its own focus navigation, from a listener on
+ * the window in the capture phase — registered before this bundle is injected,
+ * so it always runs first and has already moved focus by the time we see the
+ * key. It does not stop propagation, though, and the event still names the
+ * comment field as its target, so the keystroke is recoverable: put the focus
+ * and the caret back, and carry on. */
+const lastSelection = new WeakMap<HTMLElement, { from: number; to: number }>();
+
+export function trackCommentSelection(win: any): () => void {
+	const doc: Document = win.document;
+	const remember = () => {
+		const active = doc.activeElement as HTMLElement | null;
+		if (!active?.matches?.(COMMENT_FIELD)) return;
+		try {
+			const selection = selectionOffsets(active);
+			if (selection) lastSelection.set(active, selection);
+		} catch {
+			/* nothing worth remembering */
+		}
+	};
+	doc.addEventListener("selectionchange", remember);
+	doc.addEventListener("keyup", remember, true);
+	return () => {
+		doc.removeEventListener("selectionchange", remember);
+		doc.removeEventListener("keyup", remember, true);
+	};
+}
+
+function commentFieldOf(node: unknown): HTMLElement | null {
+	const element = (node as HTMLElement)?.closest?.(COMMENT_FIELD) as HTMLElement | null;
+	return element?.isContentEditable ? element : null;
+}
+
+/** The annotation comment being edited, or null. */
 export function currentTextBuffer(win: any): TextBuffer | null {
 	const active = win.document?.activeElement as HTMLElement | null;
-	if (!active || !active.isContentEditable || !active.matches(COMMENT_FIELD)) return null;
+	if (!active?.isContentEditable || !active.matches(COMMENT_FIELD)) return null;
 	return TextBuffer.forElement(active);
+}
+
+/**
+ * Put the focus and caret back into the comment a keystroke came from, and
+ * return the undo for it.
+ *
+ * Reversible on purpose: if nothing ends up handling the key, Zotero's own
+ * Tab navigation has to be left to stand.
+ */
+export function recoverCommentFocus(win: any, target: unknown): (() => void) | null {
+	const doc: Document = win.document;
+	const active = doc?.activeElement as HTMLElement | null;
+	if (active?.isContentEditable && active.matches(COMMENT_FIELD)) return null; // nothing was taken
+
+	const field = (target as HTMLElement)?.closest?.(COMMENT_FIELD) as HTMLElement | null;
+	if (!field?.isContentEditable || !field.isConnected) return null;
+
+	const remembered = lastSelection.get(field);
+	if (!remembered) return null;
+
+	try {
+		field.focus({ preventScroll: true });
+		setCaret(field, remembered.from, remembered.to);
+	} catch {
+		return null;
+	}
+
+	return () => {
+		try {
+			(active as HTMLElement | null)?.focus?.({ preventScroll: true });
+		} catch {
+			/* whatever had focus is gone; leaving it here is the lesser evil */
+		}
+	};
 }

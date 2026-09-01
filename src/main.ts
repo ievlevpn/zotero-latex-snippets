@@ -4,7 +4,7 @@
  * The keymap order mirrors DOCS.md#keymap-order, minus the entries that have no
  * counterpart in Zotero (auto-deleting `$`, which is not text here, and vim).
  */
-import { currentBuffer, isReaderWindow } from "./editor/index";
+import { currentBuffer, isReaderWindow, recoverCommentFocus, trackCommentSelection } from "./editor/index";
 import { rememberSelectionClass, getEditorCore } from "./editor/pm";
 import { keyNameFromEvent } from "./snippets/parse";
 import { DEFAULT_SETTINGS, processSettings, RawSettings, Settings } from "./settings/settings";
@@ -227,6 +227,11 @@ function install() {
 	const onKeydown = (event: KeyboardEvent) => {
 		handledPrintable = false;
 		trace = null;
+		// Zotero's reader takes Tab for focus navigation from a window-level
+		// capture listener registered before this bundle exists, so it always
+		// gets there first. Take the comment back, and hand it over again if
+		// nothing here wants the key after all.
+		const undoRecovery = isReaderWindow(window) ? recoverCommentFocus(window, event.target) : null;
 		try {
 			if (handleKeydown(event)) {
 				event.preventDefault();
@@ -237,8 +242,11 @@ function install() {
 					entry.handled = true;
 					entry.after = currentBuffer(window)?.text;
 				}
+			} else {
+				undoRecovery?.();
 			}
 		} catch (e) {
+			undoRecovery?.();
 			console.error("latex-snippets:", e);
 			clearTabstops();
 		}
@@ -258,8 +266,12 @@ function install() {
 	window.document.addEventListener("keydown", onKeydown, true);
 	window.document.addEventListener("beforeinput", onBeforeInput, true);
 
+	// The caret in each comment, so a stolen keystroke can be put back.
+	const stopTracking = isReaderWindow(window) ? trackCommentSelection(window) : null;
+
 	// Called from bootstrap.js when the plugin is disabled or updated.
 	window.__latexSnippetsUninstall = () => {
+		stopTracking?.();
 		window.document.removeEventListener("keydown", onKeydown, true);
 		window.document.removeEventListener("beforeinput", onBeforeInput, true);
 		clearTabstops();

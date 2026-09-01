@@ -6,7 +6,9 @@
  */
 import { Buffer } from "./buffer";
 import { currentBuffer as currentPMBuffer } from "./pm";
-import { currentTextBuffer } from "./contenteditable";
+import { currentTextBuffer, recoverCommentFocus, trackCommentSelection } from "./contenteditable";
+
+export { recoverCommentFocus, trackCommentSelection };
 
 export function isReaderWindow(win: any): boolean {
 	return !!win.document?.getElementById?.("reader-ui");
