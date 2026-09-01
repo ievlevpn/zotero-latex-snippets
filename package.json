@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
+    "jsdom": "^30.0.1",
     "katex": "^0.18.4",
     "prosemirror-model": "^1.25.11",
     "prosemirror-state": "^1.4.4",

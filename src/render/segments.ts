@@ -62,9 +62,15 @@ export function domPointAt(root: Element, segments: Segment[], target: number): 
 	for (const segment of segments) {
 		if (offset > segment.start + segment.length) continue;
 		if (segment.kind === "text") return { node: segment.node, offset: offset - segment.start };
+
+		// A <br> or a rendered equation is one atom: the caret goes before it or
+		// after it, never inside. Snap to whichever side is nearer, so an offset
+		// just inside the opening delimiter lands before the equation rather than
+		// being carried past it — the two sides have to behave alike.
 		const parent = segment.node.parentNode!;
 		const index = Array.prototype.indexOf.call(parent.childNodes, segment.node);
-		return { node: parent, offset: offset === segment.start ? index : index + 1 };
+		const nearerToEnd = offset - segment.start > segment.length / 2;
+		return { node: parent, offset: nearerToEnd ? index + 1 : index };
 	}
 	return { node: root, offset: root.childNodes.length };
 }
