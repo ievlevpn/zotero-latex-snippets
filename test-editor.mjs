@@ -64,7 +64,7 @@ export class StringBuffer {
 		this.from = from;
 		this.to = to;
 		this.owner = { annotation: true };
-		this.edits = [];
+		this.remaps = [];
 	}
 	get mathBounds() { return ls.mathBoundsAt(this.text, this.to); }
 	get kind() { return this.mathBounds ? (this.mathBounds.display ? "math_display" : "math_inline") : "text"; }
@@ -73,6 +73,16 @@ export class StringBuffer {
 	get dollarMath() { return true; }
 	applyChange(from, to, insert, tabstops = [], selection) {
 		this.text = this.text.slice(0, from) + insert + this.text.slice(to);
+
+		// The same bias a real editor maps with: a range's start holds still and
+		// its end follows, so text typed into a placeholder extends it.
+		const delta = insert.length - (to - from);
+		const map = (range) => ({
+			from: range.from <= from ? range.from : range.from >= to ? range.from + delta : from,
+			to: range.to < from ? range.to : range.to >= to ? range.to + delta : from + insert.length,
+		});
+		for (const remap of this.remaps) remap(map);
+
 		const caret = selection ?? { from: insert.length, to: insert.length };
 		this.from = from + caret.from;
 		this.to = from + caret.to;
@@ -80,19 +90,22 @@ export class StringBuffer {
 	}
 	replaceRange(from, to, insert) { this.applyChange(from, to, insert); }
 	selectRange(range) { this.from = range.from; this.to = range.to; }
+	positionAt(offset) { return offset; }
 	setSelection(from, to = from) { this.from = from; this.to = to; }
+	get document() { return null; }        // no DOM here, so no marks to draw
+	clientRects() { return []; }
 	exitMath() {
 		if (!this.mathBounds) return false;
 		this.from = this.to = this.mathBounds.outer_end;
 		return true;
 	}
-	watch() {}
+	watch(remap) { this.remaps.push(remap); }
 }
 
 /** A window shaped like the note editor's: an EditorCore on the iframe window. */
 function noteWin(view, activeElement = null) {
 	view.hasFocus = () => true;
-	view.dom = { closest: () => null, ownerDocument: { defaultView: null } };
+	view.dom = { closest: () => null, ownerDocument: null };
 	return {
 		_currentEditorInstance: { _editorCore: { view, insertMath: () => { throw new Error("fell back to insertMath"); } } },
 		document: { activeElement, getElementById: () => null },
@@ -422,6 +435,31 @@ export function run() {
 		// One expansion, replacing exactly the "in" that was typed — no leftovers.
 		assert.strictEqual(buffer.text, "$f(x) = \\int  \\, dx$");
 		assert.strictEqual(buffer.text.slice(0, buffer.to), "$f(x) = \\int ", "cursor at the first tabstop");
+		ls.clearTabstops();
+	}
+
+	/* --- a snippet expanded inside a tabstop keeps the outer one's tabstops --- */
+	{
+		const tabstop = (index, at) => ({ index: [index], from: at, to: at });
+		const buffer = new StringBuffer("", 0);
+
+		// \frac{$0}{$1}$2
+		ls.expandSnippet(buffer, 0, 0, {
+			insert: "\\frac{}{}",
+			tabstops: [tabstop(0, 6), tabstop(1, 8), tabstop(2, 9)],
+		});
+		assert.strictEqual(buffer.text, "\\frac{}{}");
+		assert.deepStrictEqual([buffer.from, buffer.to], [6, 6], "cursor in the numerator");
+
+		// now expand something with its own tabstops, right there in the numerator
+		ls.expandSnippet(buffer, 6, 6, { insert: "xy", tabstops: [tabstop(0, 0), tabstop(1, 2)] });
+		assert.strictEqual(buffer.text, "\\frac{xy}{}");
+
+		const tab = () => (ls.setSelectionToNextTabstop(buffer, false) ? buffer.to : null);
+		assert.strictEqual(tab(), 8, "the inner snippet's own second tabstop");
+		assert.strictEqual(tab(), 10, "then back out to the denominator, not lost");
+		assert.strictEqual(tab(), 11, "and the outer snippet's last tabstop");
+		assert.strictEqual(tab(), null, "nothing left");
 		ls.clearTabstops();
 	}
 

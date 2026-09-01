@@ -1,10 +1,13 @@
 /* Tabstop grouping, ported from obsidian-latex-suite (src/snippets/tabstop.ts).
  *
  * The grouping rules are unchanged. What is gone is CodeMirror's decoration
- * machinery: ProseMirror has no multi-range selection, so a group is a list of
- * ranges of which the first is the one the cursor lands on.
- * ponytail: no placeholder highlight for pending tabstops — add a PM decoration
- * plugin if the selection alone turns out not to be enough feedback.
+ * machinery: pending tabstops are marked by an overlay drawn over the text
+ * instead (see tabstop_marks.ts).
+ *
+ * One limit is not a shortcut but the platform: tabstops sharing a number are
+ * all inserted, and the cursor lands on the first. Latex Suite puts a cursor in
+ * each, and neither ProseMirror nor a contenteditable has more than one
+ * selection to give.
  */
 
 export interface TabstopSpec {

@@ -149,6 +149,11 @@ export class TextBuffer implements Buffer {
 		this.select(range.from, range.to);
 	}
 
+	/** Ranges here are already text offsets. */
+	positionAt(offset: number) {
+		return offset;
+	}
+
 	setSelection(from: number, to: number = from) {
 		this.select(from, to);
 	}
@@ -162,6 +167,24 @@ export class TextBuffer implements Buffer {
 
 	watch(remap: (map: (range: Range) => Range) => void) {
 		watchElement(this.element, remap);
+	}
+
+	get document(): Document {
+		return this.element.ownerDocument;
+	}
+
+	clientRects(range: Range): DOMRect[] {
+		try {
+			const { segments } = segmentsOf(this.element);
+			const start = domPointAt(this.element, segments, range.from);
+			const end = domPointAt(this.element, segments, range.to);
+			const domRange = this.element.ownerDocument.createRange();
+			domRange.setStart(start.node, start.offset);
+			domRange.setEnd(end.node, end.offset);
+			return Array.from(domRange.getClientRects());
+		} catch {
+			return [];
+		}
 	}
 }
 

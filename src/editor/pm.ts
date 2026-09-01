@@ -287,8 +287,29 @@ export class PMBuffer implements Buffer {
 		this.setSelectionPM(range.from, range.to);
 	}
 
+	positionAt(offset: number) {
+		return this.pmPos(offset);
+	}
+
 	exitMath(): boolean {
 		return this.inMath && exitMath(this.view);
+	}
+
+	get document(): Document {
+		return this.view.dom.ownerDocument;
+	}
+
+	clientRects(range: Range): DOMRect[] {
+		try {
+			const from = this.view.domAtPos(range.from);
+			const to = this.view.domAtPos(range.to);
+			const domRange = this.document.createRange();
+			domRange.setStart(from.node, from.offset);
+			domRange.setEnd(to.node, to.offset);
+			return Array.from(domRange.getClientRects());
+		} catch {
+			return [];
+		}
 	}
 
 	/**

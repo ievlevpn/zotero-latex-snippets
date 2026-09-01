@@ -59,6 +59,9 @@ export interface Buffer {
 	/** Select a range previously returned by `applyChange`. */
 	selectRange(range: Range): void;
 
+	/** A text offset in this buffer's own coordinates, to compare against a `Range`. */
+	positionAt(offset: number): number;
+
 	/** Move the cursor, in text offsets. */
 	setSelection(from: number, to?: number): void;
 
@@ -70,4 +73,10 @@ export interface Buffer {
 	 * editor itself. `remap` is called with a mapper for each such edit.
 	 */
 	watch(remap: (map: (range: Range) => Range) => void): void;
+
+	/** The document this buffer is being edited in. */
+	readonly document: Document;
+
+	/** Where a range sits on screen, for drawing over it. */
+	clientRects(range: Range): DOMRect[];
 }

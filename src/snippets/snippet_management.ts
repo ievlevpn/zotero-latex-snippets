@@ -11,19 +11,77 @@
 import { Buffer, Range } from "src/editor/buffer";
 import { ResultInsert } from "./luasnip_api/node";
 import { tabstopSpecsToTabstopGroups } from "./tabstop";
+import { hideTabstopMarks, showTabstopMarks } from "./tabstop_marks";
 
 type ActiveSnippet = {
 	owner: object;
 	groups: Range[][];
 	index: number;
+	/** kept for `clientRects`, which re-reads the DOM on each call */
+	buffer: Buffer;
+	/** null when there is nothing to draw on; the marks are decoration only */
+	doc: Document | null;
 };
 
-// ponytail: one snippet in flight at a time. Nested expansions reset the
-// tabstops of the outer one, which is what happens in practice anyway.
+/** Never let a cosmetic mark be the reason an expansion fails. */
+function documentOf(buffer: Buffer): Document | null {
+	try {
+		return buffer.document ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/* Snippets in flight, outermost first. Expanding inside a tabstop of the
+ * snippet you are already filling in pushes onto this; anywhere else starts
+ * over. Running out of tabstops pops back to the one underneath, so a snippet
+ * expanded inside a placeholder does not cost you the rest of the outer one. */
+const stack: ActiveSnippet[] = [];
 let active: ActiveSnippet | null = null;
 
+function enter(snippet: ActiveSnippet) {
+	stack.push(snippet);
+	active = snippet;
+}
+
+/** Is `range` inside a tabstop the current snippet has not passed yet? */
+function withinPendingTabstop(owner: object, from: number, to: number): boolean {
+	if (!active || active.owner !== owner) return false;
+	return active.groups
+		.slice(active.index)
+		.some((group) => group.some((range) => from >= range.from && to <= range.to));
+}
+
 export function clearTabstops() {
-	active = null;
+	stack.length = 0;
+	dropActive();
+}
+
+/** Drop just the innermost snippet, uncovering the one it was expanded inside. */
+function dropActive() {
+	if (active?.doc) {
+		try {
+			hideTabstopMarks(active.doc);
+			active.doc.removeEventListener("scroll", paintMarks, true);
+		} catch {
+			/* the window may already be gone */
+		}
+	}
+	stack.pop();
+	active = stack[stack.length - 1] ?? null;
+	paintMarks();
+}
+
+/** Mark the tabstops still to come — the one in hand is shown by the selection. */
+function paintMarks() {
+	const current = active;
+	if (!current?.doc) return;
+	try {
+		const pending = current.groups.slice(current.index + 1).flat();
+		showTabstopMarks(current.doc, pending.flatMap((range) => current.buffer.clientRects(range)));
+	} catch {
+		/* decoration only */
+	}
 }
 
 export function hasTabstops() {
@@ -32,6 +90,7 @@ export function hasTabstops() {
 
 /** Replace `[from, to)` in `buffer` with a snippet result, then select tabstop 0. */
 export function expandSnippet(buffer: Buffer, from: number, to: number, result: ResultInsert): boolean {
+	const nested = withinPendingTabstop(buffer.owner, buffer.positionAt(from), buffer.positionAt(to));
 	const groups = tabstopSpecsToTabstopGroups(result.tabstops);
 	const flat = groups.flat();
 
@@ -39,7 +98,9 @@ export function expandSnippet(buffer: Buffer, from: number, to: number, result: 
 	const placed = buffer.applyChange(from, to, result.insert, flat, selection);
 
 	if (!groups.length) {
-		clearTabstops();
+		// Nothing to step through here; hand the tabstops back to the outer snippet.
+		if (nested) dropActive();
+		else clearTabstops();
 		return true;
 	}
 
@@ -51,9 +112,19 @@ export function expandSnippet(buffer: Buffer, from: number, to: number, result: 
 	buffer.watch((map) => {
 		if (active && active.owner === owner) {
 			active.groups = active.groups.map((group) => group.map(map));
+			paintMarks();
 		}
 	});
-	active = { owner, groups: placedGroups, index: 0 };
+
+	// Expanding inside a placeholder of the snippet in hand nests; anything else
+	// means that snippet is finished with.
+	if (!nested) clearTabstops();
+
+	const doc = documentOf(buffer);
+	enter({ owner, groups: placedGroups, index: 0, buffer, doc });
+	// Fixed-position marks would sit in the wrong place after a scroll.
+	doc?.addEventListener("scroll", paintMarks, true);
+	paintMarks();
 	return true;
 }
 
@@ -83,10 +154,21 @@ export function setSelectionToNextTabstop(buffer: Buffer, shiftKey: boolean): bo
 
 		buffer.selectRange(target);
 		active.index = next;
-		if (next === active.groups.length - 1 && direction === 1) clearTabstops();
+		// The last tabstop of the innermost snippet finishes it, but only it.
+		if (next === active.groups.length - 1 && direction === 1) {
+			if (stack.length > 1) dropActive();
+			else clearTabstops();
+		} else {
+			paintMarks();
+		}
 		return true;
 	}
 
+	// Out of tabstops here: fall back to the snippet this one was expanded inside.
+	if (direction === 1 && stack.length > 1) {
+		dropActive();
+		return setSelectionToNextTabstop(buffer, shiftKey);
+	}
 	if (direction === 1) clearTabstops();
 	return false;
 }

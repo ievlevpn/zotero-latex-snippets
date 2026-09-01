@@ -11,7 +11,7 @@
  * replaced it, and put back before the reader ever looks.
  */
 import { MathBounds, renderableEquations } from "src/utils/math_bounds";
-import { segmentsOf, SOURCE_ATTR } from "./segments";
+import { domPointAt, segmentsOf, SOURCE_ATTR } from "./segments";
 
 export const MATH_CLASS = "latex-snippets-math";
 
@@ -25,6 +25,12 @@ type Katex = { render(tex: string, element: Element, options: object): void };
  * equations would otherwise go through KaTeX again on every key. Cloning a
  * finished MathML subtree costs a fraction of parsing the LaTeX again. */
 const cache = new Map<string, Element>();
+
+/* What a rendered equation replaced, when that was more than plain text — an
+ * equation with `<b>` inside it, say. Unrendering puts these back exactly, so
+ * rendering never costs the comment its formatting. Kept off the element so the
+ * source cache above can still clone freely. */
+const originals = new WeakMap<Element, DocumentFragment>();
 // Only the equations in the comment being edited are cycled through this, so a
 // small cache holds everything that matters; a big one just pins DOM subtrees.
 const CACHE_MAX = 100;
@@ -45,6 +51,12 @@ export function unrenderMath(root: Element): boolean {
 	const rendered = root.querySelectorAll(`[${SOURCE_ATTR}]`);
 	if (!rendered.length) return false;
 	for (const element of Array.from(rendered)) {
+		const original = originals.get(element);
+		if (original) {
+			originals.delete(element);
+			element.replaceWith(original);
+			continue;
+		}
 		const source = element.getAttribute(SOURCE_ATTR) ?? "";
 		element.replaceWith(root.ownerDocument.createTextNode(source));
 		remember(source, element); // detached now, and about to be wanted again
@@ -87,9 +99,6 @@ function build(doc: Document, text: string, bounds: MathBounds, katex: Katex): E
  * `caret`, when given, is a text offset whose equation is left as source — that
  * is the one being edited, and replacing it under the cursor would be no use to
  * anybody.
- *
- * ponytail: an equation split across a `<b>` boundary is left as text. Nobody
- * bolds half a formula, and handling it would mean rebuilding the subtree.
  */
 export function renderMath(root: Element, katex: Katex, caret?: number | null): boolean {
 	const removed = unrenderMath(root);
@@ -103,26 +112,26 @@ export function renderMath(root: Element, katex: Katex, caret?: number | null): 
 	const doc = root.ownerDocument;
 	let changed = removed;
 
-	// Back to front, so replacing one equation cannot shift the next one's node.
-	for (const segment of [...segments].reverse()) {
-		if (segment.kind !== "text") continue;
-		const node = segment.node as Text;
-		const within = equations.filter(
-			(bounds) => bounds.outer_start >= segment.start && bounds.outer_end <= segment.start + segment.length,
-		);
-		if (!within.length) continue;
+	// Back to front, so replacing one equation cannot shift the offsets of the
+	// ones still to come.
+	for (const bounds of [...equations].reverse()) {
+		const start = domPointAt(root, segments, bounds.outer_start);
+		const end = domPointAt(root, segments, bounds.outer_end);
 
-		const pieces: Node[] = [];
-		let offset = segment.start;
-		for (const bounds of within) {
-			if (bounds.outer_start > offset) pieces.push(doc.createTextNode(text.slice(offset, bounds.outer_start)));
-			pieces.push(build(doc, text, bounds, katex));
-			offset = bounds.outer_end;
+		const range = doc.createRange();
+		try {
+			range.setStart(start.node, start.offset);
+			range.setEnd(end.node, end.offset);
+		} catch {
+			continue; // a stale offset; leave this one as text
 		}
-		const tail = segment.start + segment.length;
-		if (offset < tail) pieces.push(doc.createTextNode(text.slice(offset, tail)));
 
-		node.replaceWith(...pieces);
+		// A Range spans inline markup, so `$a<b>x</b>b$` renders like any other
+		// equation. What came out is kept so unrendering restores the markup too.
+		const original = range.extractContents();
+		const span = build(doc, text, bounds, katex);
+		if (original.querySelector("*")) originals.set(span, original);
+		range.insertNode(span);
 		changed = true;
 	}
 
