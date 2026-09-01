@@ -16,7 +16,7 @@
  * — clicking it has to put the source back and drop the caret in, or an
  * equation would become uneditable the moment it rendered.
  */
-import { clearRenderState, syncRender, unrenderMath } from "src/render/math";
+import { clearRenderState, isRendered, syncRender, unrenderMath } from "src/render/math";
 import { segmentsOf, selectionOffsets, setCaret, SOURCE_ATTR } from "src/render/segments";
 import { COMMENT_FIELD } from "src/editor/contenteditable";
 
@@ -103,13 +103,22 @@ export function installAnnotationRendering(win: any): (() => void) | null {
 		}
 	}
 
-	/* Before the edit happens, not after: a rendered equation is an atom the
-	 * caret cannot enter, and the browser's own editing commands — delete a word,
-	 * delete to the start of the line — misbehave when one is in the way. With
-	 * the source back in place they act on ordinary text. */
+	/* Deletions only.
+	 *
+	 * A rendered equation is an atom the caret cannot enter, and the browser's
+	 * own deletion commands — delete a word, delete to the start of the line —
+	 * misbehave when one is in the way, so the source has to be back before they
+	 * run. They tolerate it because they recompute from the caret afterwards.
+	 *
+	 * Nothing else may be touched here. Stripping replaces the selection, and a
+	 * command already in flight does not survive that: doing this for every
+	 * input type is what stopped Cmd/Ctrl-B and -I working in a comment holding
+	 * an equation. Everything else is stripped on `input`, before Zotero reads
+	 * the comment back, which is soon enough. */
 	const onBeforeInput = (event: Event) => {
+		if (!(event as InputEvent).inputType?.startsWith("delete")) return;
 		const field = fieldOf(event.target);
-		if (field) stripRendering(field);
+		if (field && isRendered(field)) stripRendering(field);
 	};
 
 	/* Capture phase, so this runs before React's onInput — which is attached at
